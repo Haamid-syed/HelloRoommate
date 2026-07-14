@@ -5,12 +5,8 @@ export default defineConfig({
     environment: 'node',
     globals: false,
     // Run test files sequentially to avoid DB state conflicts
-    pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: true,
-      },
-    },
+    fileParallelism: false,
+    maxWorkers: 1,
     // Load .env before any test runs
     env: {
       // Vitest reads from .env automatically when using dotenv integration
