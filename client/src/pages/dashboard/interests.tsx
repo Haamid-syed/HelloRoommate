@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import type { ApiResponse, Interest, Listing, TenantProfile, User } from 'shared';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
+import { motion } from 'framer-motion';
 
 type InterestListItem = Interest & {
   listing: Listing;
@@ -15,34 +16,11 @@ type InterestListItem = Interest & {
 
 type InterestListResponse = ApiResponse<{ interests: InterestListItem[] }>;
 
-const currency = new Intl.NumberFormat('en-IN', {
-  style: 'currency',
-  currency: 'INR',
-  maximumFractionDigits: 0,
-});
+const currency = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
 
 function apiErrorMessage(error: unknown, fallback: string): string {
-  if (isAxiosError<ApiResponse>(error)) {
-    return error.response?.data.error?.message ?? fallback;
-  }
-
+  if (isAxiosError<ApiResponse>(error)) return error.response?.data.error?.message ?? fallback;
   return fallback;
-}
-
-function InterestStatusBadge({ status }: { status: Interest['status'] }) {
-  if (status === 'PENDING') {
-    return <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700"><Clock className="h-3.5 w-3.5" />Pending</span>;
-  }
-
-  if (status === 'ACCEPTED') {
-    return <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />Accepted</span>;
-  }
-
-  if (status === 'DECLINED') {
-    return <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700"><XCircle className="h-3.5 w-3.5" />Declined</span>;
-  }
-
-  return <span className="inline-flex items-center rounded-full border border-border bg-secondary px-2.5 py-1 text-xs font-semibold text-muted-foreground">Withdrawn</span>;
 }
 
 export default function InterestsPage() {
@@ -64,12 +42,10 @@ export default function InterestsPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['my-interests'] });
       void queryClient.invalidateQueries({ queryKey: ['conversations'] });
-      toast.success('Interest accepted! Conversation created.');
+      toast.success('Interest accepted! Conversation opened.');
       navigate('/dashboard/chat');
     },
-    onError: (error: unknown) => {
-      toast.error(apiErrorMessage(error, 'Failed to accept interest'));
-    },
+    onError: (error: unknown) => toast.error(apiErrorMessage(error, 'Failed to accept interest')),
   });
 
   const declineMutation = useMutation({
@@ -79,20 +55,24 @@ export default function InterestsPage() {
       void queryClient.invalidateQueries({ queryKey: ['listings'] });
       toast.success('Interest declined');
     },
-    onError: (error: unknown) => {
-      toast.error(apiErrorMessage(error, 'Failed to decline interest'));
-    },
+    onError: (error: unknown) => toast.error(apiErrorMessage(error, 'Failed to decline interest')),
   });
 
   if (interestsQuery.isLoading) {
-    return <div className="flex h-60 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>;
+    return (
+      <div className="space-y-4">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="skeleton h-24 rounded-2xl" style={{ animationDelay: `${i * 0.1}s` }} />
+        ))}
+      </div>
+    );
   }
 
   if (interestsQuery.isError) {
     return (
-      <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-6 text-center">
-        <p className="font-medium text-destructive">Interests could not be loaded.</p>
-        <button type="button" onClick={() => interestsQuery.refetch()} className="mt-3 text-sm font-semibold text-primary hover:underline">Try again</button>
+      <div className="card-elevated rounded-2xl p-8 text-center">
+        <p className="font-medium text-red-400">Interests could not be loaded.</p>
+        <button type="button" onClick={() => interestsQuery.refetch()} className="mt-3 text-sm font-semibold text-gold hover:underline">Try again</button>
       </div>
     );
   }
@@ -100,56 +80,120 @@ export default function InterestsPage() {
   const interests = interestsQuery.data ?? [];
 
   return (
-    <section className="mx-auto max-w-4xl animate-fade-in">
-      <div className="mb-6">
-        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">Match management</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight">{isOwner ? 'Expressed interests' : 'Sent interests'}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {isOwner ? 'Review requests from prospective tenants and open a conversation when it feels right.' : 'Track every listing you have reached out about in one place.'}
+    <section className="mx-auto max-w-3xl">
+      <div className="mb-8">
+        <p className="label-overline">Match Management</p>
+        <h1 className="font-serif text-display-md text-foreground mt-2">
+          {isOwner ? 'Expressed interests' : 'Sent interests'}
+        </h1>
+        <p className="mt-1.5 text-sm text-muted-foreground">
+          {isOwner
+            ? 'Review requests from prospective tenants and open a conversation.'
+            : 'Track every listing you have reached out about.'}
         </p>
       </div>
 
       {interests.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-16 text-center">
-          <Inbox className="mx-auto h-8 w-8 text-primary" />
-          <h2 className="mt-4 text-lg font-semibold">No interests yet</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {isOwner ? 'New tenant requests will appear here for your active listings.' : 'Express interest from Browse listings to keep track of a room here.'}
+        <div className="card-elevated rounded-2xl px-8 py-16 text-center border border-dashed border-border">
+          <Inbox className="mx-auto h-8 w-8 mb-4" style={{ color: 'hsl(37 78% 60% / 0.5)' }} />
+          <h2 className="font-serif text-lg font-semibold text-foreground">No interests yet</h2>
+          <p className="mt-2 text-sm text-muted-foreground max-w-xs mx-auto">
+            {isOwner
+              ? 'New tenant requests will appear here for your active listings.'
+              : 'Express interest from Browse listings to keep track here.'}
           </p>
-          {!isOwner && <button type="button" onClick={() => navigate('/dashboard/browse')} className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline">Browse listings <ArrowUpRight className="h-4 w-4" /></button>}
+          {!isOwner && (
+            <button
+              type="button"
+              onClick={() => navigate('/dashboard/browse')}
+              className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-gold hover:underline underline-offset-4"
+            >
+              Browse listings <ArrowUpRight className="h-4 w-4" />
+            </button>
+          )}
         </div>
       ) : (
-        <div className="space-y-4">
-          {interests.map((item) => (
-            <article key={item.id} className="flex flex-col items-start justify-between gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm sm:flex-row sm:items-center">
-              <div className="flex min-w-0 gap-4">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary/10">
-                  {item.listing.photos[0] ? <img src={item.listing.photos[0].url} alt={item.listing.title} className="h-full w-full object-cover" /> : <Building2 className="h-6 w-6 text-primary" />}
-                </div>
-                <div className="min-w-0">
-                  <h2 className="truncate text-lg font-semibold">{item.listing.title}</h2>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
-                    <span>{item.listing.area}, {item.listing.city}</span><span>•</span><span className="font-semibold text-foreground">{currency.format(item.listing.rent)}/mo</span>
-                  </div>
-                  <p className="mt-2 text-xs text-muted-foreground">Expressed {format(new Date(item.createdAt), 'MMM d, yyyy h:mm a')}</p>
-                  {isOwner && (
-                    <div className="mt-2 rounded-lg bg-secondary/60 p-2.5 text-xs text-muted-foreground">
-                      Sent by <strong className="text-foreground">{item.tenantProfile.user.name}</strong>
-                      {item.scoreAtInterest !== null && <> · compatibility <strong className="text-primary">{item.scoreAtInterest}/100</strong></>}
-                    </div>
-                  )}
-                </div>
+        <div className="space-y-3">
+          {interests.map((item, i) => (
+            <motion.article
+              key={item.id}
+              className="card-elevated rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center gap-4"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: i * 0.07, ease: [0.22, 1, 0.36, 1] }}
+            >
+              {/* Thumbnail */}
+              <div className="h-14 w-14 shrink-0 rounded-xl overflow-hidden flex items-center justify-center"
+                style={{ background: 'hsl(var(--surface-2))' }}
+              >
+                {item.listing.photos[0] ? (
+                  <img src={item.listing.photos[0].url} alt={item.listing.title} className="h-full w-full object-cover" />
+                ) : (
+                  <Building2 className="h-6 w-6" style={{ color: 'hsl(37 78% 60% / 0.5)' }} />
+                )}
               </div>
 
-              <div className="flex w-full shrink-0 items-center justify-end gap-3 sm:w-auto">
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <h2 className="font-serif text-base font-semibold text-foreground truncate">{item.listing.title}</h2>
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                  <span>{item.listing.area}, {item.listing.city}</span>
+                  <span>·</span>
+                  <span className="font-semibold text-foreground">{currency.format(item.listing.rent)}/mo</span>
+                </div>
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  {format(new Date(item.createdAt), 'MMM d, yyyy · h:mm a')}
+                </p>
+                {isOwner && (
+                  <div className="mt-2 inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs"
+                    style={{ background: 'hsl(var(--surface-2))' }}
+                  >
+                    <span className="text-muted-foreground">By</span>
+                    <span className="font-semibold text-foreground">{item.tenantProfile.user.name}</span>
+                    {item.scoreAtInterest !== null && (
+                      <>
+                        <span className="text-muted-foreground">·</span>
+                        <span className="font-bold text-gold">{item.scoreAtInterest}/100</span>
+                        <span className="text-muted-foreground">match</span>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-2 shrink-0">
                 {item.status === 'PENDING' && isOwner ? (
                   <>
-                    <button type="button" onClick={() => declineMutation.mutate(item.id)} disabled={acceptMutation.isPending || declineMutation.isPending} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"><X className="h-4 w-4" />Decline</button>
-                    <button type="button" onClick={() => acceptMutation.mutate(item.id)} disabled={acceptMutation.isPending || declineMutation.isPending} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"><Check className="h-4 w-4" />Accept</button>
+                    <button
+                      type="button"
+                      onClick={() => declineMutation.mutate(item.id)}
+                      disabled={acceptMutation.isPending || declineMutation.isPending}
+                      className="h-9 px-3 rounded-lg text-xs font-semibold transition-all duration-200 disabled:opacity-50"
+                      style={{ background: 'hsl(0 65% 60% / 0.1)', color: 'hsl(0 65% 68%)', border: '1px solid hsl(0 65% 60% / 0.25)' }}
+                    >
+                      <X className="h-3.5 w-3.5 inline mr-1" />
+                      Decline
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => acceptMutation.mutate(item.id)}
+                      disabled={acceptMutation.isPending || declineMutation.isPending}
+                      className="btn-gold h-9 px-3 text-xs flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      Accept
+                    </button>
                   </>
-                ) : <InterestStatusBadge status={item.status} />}
+                ) : (
+                  <>
+                    {item.status === 'PENDING' && <span className="badge-pending"><Clock className="h-3 w-3" />Pending</span>}
+                    {item.status === 'ACCEPTED' && <span className="badge-accepted"><CheckCircle2 className="h-3 w-3" />Accepted</span>}
+                    {item.status === 'DECLINED' && <span className="badge-declined"><XCircle className="h-3 w-3" />Declined</span>}
+                  </>
+                )}
               </div>
-            </article>
+            </motion.article>
           ))}
         </div>
       )}

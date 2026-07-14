@@ -3,10 +3,11 @@ import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-q
 import { Link } from 'react-router-dom';
 import { isAxiosError } from 'axios';
 import { format } from 'date-fns';
-import { Building2, CheckCircle2, ChevronDown, Clock, MapPin, Search, Send, SlidersHorizontal, UserRound, Wallet, XCircle } from 'lucide-react';
+import { Building2, CheckCircle2, ChevronDown, Clock, MapPin, Search, Send, SlidersHorizontal, Wallet, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { ApiResponse, Interest, Listing, ListingsFilterInput } from 'shared';
 import { api } from '@/lib/api';
+import { motion } from 'framer-motion';
 
 type ListingSearchResponse = ApiResponse<{ listings: Listing[] }>;
 type BrowseFilters = Pick<ListingsFilterInput, 'city' | 'minRent' | 'maxRent' | 'roomType' | 'furnishing' | 'sort'> & {
@@ -22,116 +23,149 @@ type FilterForm = {
   sort: 'score' | 'rent' | 'recency';
 };
 
-const initialFilterForm: FilterForm = {
-  city: '',
-  minRent: '',
-  maxRent: '',
-  roomType: '',
-  furnishing: '',
-  sort: 'score',
-};
+const initialFilterForm: FilterForm = { city: '', minRent: '', maxRent: '', roomType: '', furnishing: '', sort: 'score' };
 
-const currency = new Intl.NumberFormat('en-IN', {
-  style: 'currency',
-  currency: 'INR',
-  maximumFractionDigits: 0,
-});
-
-function scoreColor(score: number) {
-  if (score >= 80) return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-  if (score >= 60) return 'border-amber-200 bg-amber-50 text-amber-700';
-  return 'border-rose-200 bg-rose-50 text-rose-700';
-}
+const currency = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
 
 function apiErrorMessage(error: unknown, fallback: string): string {
-  if (isAxiosError<ApiResponse>(error)) {
-    return error.response?.data.error?.message ?? fallback;
-  }
-
+  if (isAxiosError<ApiResponse>(error)) return error.response?.data.error?.message ?? fallback;
   return fallback;
 }
 
-function ListingResultCard({ listing }: { listing: Listing }) {
+/* ── Animated SVG Score Ring ── */
+function ScoreRing({ score }: { score: number }) {
+  const size = 56;
+  const strokeWidth = 3.5;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const dash = (score / 100) * circumference;
+
+  const color =
+    score >= 80 ? 'hsl(152, 45%, 48%)' :
+    score >= 60 ? 'hsl(37, 78%, 60%)' :
+    'hsl(0, 65%, 60%)';
+
+  const textClass =
+    score >= 80 ? 'score-high' :
+    score >= 60 ? 'score-mid' :
+    'score-low';
+
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        {/* Track */}
+        <circle
+          cx={size / 2} cy={size / 2} r={radius}
+          fill="none"
+          stroke="hsl(var(--border))"
+          strokeWidth={strokeWidth}
+        />
+        {/* Progress */}
+        <motion.circle
+          cx={size / 2} cy={size / 2} r={radius}
+          fill="none"
+          stroke={color}
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          initial={{ strokeDashoffset: circumference }}
+          animate={{ strokeDashoffset: circumference - dash }}
+          transition={{ duration: 1, ease: [0.22, 1, 0.36, 1], delay: 0.2 }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className={`text-sm font-bold leading-none ${textClass}`}>{score}</span>
+        <span className="text-[9px] text-muted-foreground leading-none mt-0.5">/ 100</span>
+      </div>
+    </div>
+  );
+}
+
+function ListingResultCard({ listing, index }: { listing: Listing; index: number }) {
   const score = listing.score?.score;
   const queryClient = useQueryClient();
   const expressInterestMutation = useMutation({
     mutationFn: async (): Promise<Interest> => {
-      const response = await api.post<ApiResponse<{ interest: Interest }>>('/interests', {
-        listingId: listing.id,
-      });
+      const response = await api.post<ApiResponse<{ interest: Interest }>>('/interests', { listingId: listing.id });
       const interest = response.data.data?.interest;
-      if (!interest) throw new Error('Interest was not returned by the server');
+      if (!interest) throw new Error('Interest was not returned');
       return interest;
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['listings'] });
       void queryClient.invalidateQueries({ queryKey: ['my-interests'] });
-      toast.success('Interest expressed successfully!');
+      toast.success('Interest expressed!');
     },
-    onError: (error: unknown) => {
-      toast.error(apiErrorMessage(error, 'Failed to express interest'));
-    },
+    onError: (error: unknown) => toast.error(apiErrorMessage(error, 'Failed to express interest')),
   });
   const activeInterest = listing.interest;
 
   return (
-    <article className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
-      <div className="relative flex h-36 items-center justify-center overflow-hidden bg-gradient-to-br from-primary/20 via-primary/10 to-secondary">
+    <motion.article
+      className="card-elevated card-hover rounded-2xl overflow-hidden flex flex-col"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: index * 0.06, ease: [0.22, 1, 0.36, 1] }}
+    >
+      {/* Image / gradient header */}
+      <div className="relative h-44 overflow-hidden">
         {listing.photos[0] ? (
-          <img src={listing.photos[0].url} alt={listing.title} className="h-full w-full object-cover" />
+          <img src={listing.photos[0].url} alt={listing.title} className="w-full h-full object-cover transition-transform duration-500 hover:scale-105" />
         ) : (
-          <Building2 className="h-10 w-10 text-primary/60" />
+          <div className="w-full h-full flex items-center justify-center"
+            style={{ background: 'linear-gradient(135deg, hsl(var(--surface-2)), hsl(var(--surface)))' }}
+          >
+            <Building2 className="h-10 w-10" style={{ color: 'hsl(37 78% 60% / 0.4)' }} />
+          </div>
         )}
-        <span className="absolute bottom-3 left-3 rounded-full bg-card/90 px-2.5 py-1 text-xs font-semibold text-foreground shadow-sm backdrop-blur">
+        {/* Room type pill */}
+        <span className="absolute bottom-3 left-3 rounded-full px-2.5 py-1 text-[11px] font-semibold backdrop-blur-sm"
+          style={{ background: 'hsl(var(--background) / 0.85)', color: 'hsl(var(--foreground))' }}
+        >
           {listing.roomType.replace('_', ' ')}
         </span>
-        {score !== undefined && (
-          <div className="absolute right-3 top-3 flex flex-col items-center gap-0.5">
-            <span
-              className={`flex h-10 w-10 items-center justify-center rounded-full border text-sm font-bold shadow-sm ${scoreColor(score)}`}
-              title={`Compatibility score: ${score}/100`}
-            >
-              {score}
-            </span>
-            <span className="rounded-full bg-card/90 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground shadow-sm backdrop-blur">
-              Est.
-            </span>
-          </div>
-        )}
       </div>
 
-      <div className="p-5">
-        <div className="flex gap-3">
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate text-lg font-semibold">{listing.title}</h2>
-            <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground"><MapPin className="h-3.5 w-3.5" />{listing.area}, {listing.city}</p>
+      {/* Body */}
+      <div className="flex-1 p-5 flex flex-col gap-4">
+        {/* Title + Score */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="font-serif text-base font-semibold text-foreground leading-snug line-clamp-2">
+              {listing.title}
+            </h2>
+            <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <MapPin className="h-3 w-3 shrink-0" />
+              {listing.area}, {listing.city}
+            </p>
           </div>
-          {score === undefined && <span className="shrink-0 text-sm font-medium text-muted-foreground">N/A</span>}
+          {score !== undefined && <ScoreRing score={score} />}
         </div>
 
-        <div className="mt-5 space-y-2.5 text-sm">
-          <p className="flex items-center gap-2 font-semibold"><Wallet className="h-4 w-4 text-primary" />{currency.format(listing.rent)}/mo <span className="font-normal text-muted-foreground">• {listing.furnishing.replace('_', ' ')}</span></p>
-          <p className="text-muted-foreground">Available {format(new Date(listing.availableFrom), 'MMM d, yyyy')}</p>
-          <p className="flex items-center gap-2 text-muted-foreground"><UserRound className="h-4 w-4" />Listed by {listing.owner?.name ?? 'Room owner'}</p>
+        {/* Details */}
+        <div className="space-y-1.5 text-sm">
+          <div className="flex items-center gap-2">
+            <Wallet className="h-3.5 w-3.5 text-gold shrink-0" />
+            <span className="font-semibold text-foreground">{currency.format(listing.rent)}/mo</span>
+            <span className="text-muted-foreground text-xs">· {listing.furnishing.replace('_', ' ')}</span>
+          </div>
+          <p className="text-xs text-muted-foreground pl-5">
+            Available {format(new Date(listing.availableFrom), 'MMM d, yyyy')}
+          </p>
         </div>
 
-        <div className="mt-5 border-t border-border pt-4">
+        {/* Actions */}
+        <div className="mt-auto pt-3 border-t border-border space-y-2">
           {activeInterest ? (
-            <div className="flex items-center gap-2 text-sm font-semibold">
+            <div className="flex items-center gap-2 text-xs font-medium">
               {activeInterest.status === 'PENDING' && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
-                  <Clock className="h-3.5 w-3.5" /> Pending interest
-                </span>
+                <span className="badge-pending"><Clock className="h-3 w-3" /> Pending</span>
               )}
               {activeInterest.status === 'ACCEPTED' && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                  <CheckCircle2 className="h-3.5 w-3.5" /> Interest accepted
-                </span>
+                <span className="badge-accepted"><CheckCircle2 className="h-3 w-3" /> Accepted</span>
               )}
               {activeInterest.status === 'DECLINED' && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700">
-                  <XCircle className="h-3.5 w-3.5" /> Interest declined
-                </span>
+                <span className="badge-declined"><XCircle className="h-3 w-3" /> Declined</span>
               )}
             </div>
           ) : (
@@ -139,45 +173,44 @@ function ListingResultCard({ listing }: { listing: Listing }) {
               type="button"
               onClick={() => expressInterestMutation.mutate()}
               disabled={expressInterestMutation.isPending}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary/10 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full h-9 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all duration-200 disabled:opacity-50"
+              style={{ background: 'hsl(37 78% 60% / 0.12)', color: 'hsl(37 78% 65%)' }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'hsl(37 78% 60% / 0.2)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'hsl(37 78% 60% / 0.12)')}
             >
-              <Send className="h-4 w-4" />
-              {expressInterestMutation.isPending ? 'Sending…' : 'Express interest'}
+              <Send className="h-3.5 w-3.5" />
+              {expressInterestMutation.isPending ? 'Sending…' : 'Express Interest'}
             </button>
           )}
-        </div>
-
-        <div className="mt-5 border-t border-border pt-4">
           <Link
             to={`/dashboard/listings/${listing.id}`}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-input bg-card px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-secondary"
+            className="flex w-full h-9 items-center justify-center rounded-lg text-xs font-medium text-muted-foreground transition-all duration-200 hover:text-foreground hover:bg-surface-2"
           >
-            View compatibility & details
+            View AI match details →
           </Link>
         </div>
       </div>
-    </article>
+    </motion.article>
   );
 }
 
 export default function BrowseListings() {
   const [draft, setDraft] = useState<FilterForm>(initialFilterForm);
   const [filters, setFilters] = useState<BrowseFilters>({ sort: 'score', limit: 20 });
+  const [filtersOpen, setFiltersOpen] = useState(true);
 
   const listingsQuery = useInfiniteQuery({
     queryKey: ['listings', filters],
     initialPageParam: undefined as string | undefined,
     queryFn: async ({ pageParam }): Promise<ListingSearchResponse> => {
-      const response = await api.get<ListingSearchResponse>('/listings', {
-        params: { ...filters, cursor: pageParam },
-      });
+      const response = await api.get<ListingSearchResponse>('/listings', { params: { ...filters, cursor: pageParam } });
       return response.data;
     },
     getNextPageParam: (lastPage): string | undefined =>
       lastPage.meta?.hasMore ? lastPage.meta.cursor ?? undefined : undefined,
   });
 
-  const listings = listingsQuery.data?.pages.flatMap((page) => page.data?.listings ?? []) ?? [];
+  const listings = listingsQuery.data?.pages.flatMap((p) => p.data?.listings ?? []) ?? [];
 
   const applyFilters = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -198,40 +231,110 @@ export default function BrowseListings() {
   };
 
   return (
-    <section className="animate-fade-in">
-      <div className="mb-6">
-        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">Tenant dashboard</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight">Find your next room</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Search active rooms by the location, price, and setup that work for you.</p>
+    <section>
+      {/* Page header */}
+      <div className="mb-8">
+        <p className="label-overline">Tenant Dashboard</p>
+        <h1 className="font-serif text-display-md text-foreground mt-2">Find your next room</h1>
+        <p className="text-muted-foreground text-sm mt-2">AI-ranked listings matched to your preferences.</p>
       </div>
 
-      <form onSubmit={applyFilters} className="mb-7 rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
-        <div className="mb-4 flex items-center gap-2"><SlidersHorizontal className="h-4 w-4 text-primary" /><h2 className="font-semibold">Filters</h2></div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          <input aria-label="City" value={draft.city} onChange={(event) => setDraft((current) => ({ ...current, city: event.target.value }))} placeholder="City" className="h-10 rounded-lg border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30" />
-          <input aria-label="Minimum monthly rent" type="number" min={1} value={draft.minRent} onChange={(event) => setDraft((current) => ({ ...current, minRent: event.target.value }))} placeholder="Min rent" className="h-10 rounded-lg border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30" />
-          <input aria-label="Maximum monthly rent" type="number" min={1} value={draft.maxRent} onChange={(event) => setDraft((current) => ({ ...current, maxRent: event.target.value }))} placeholder="Max rent" className="h-10 rounded-lg border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30" />
-          <select aria-label="Room type" value={draft.roomType} onChange={(event) => setDraft((current) => ({ ...current, roomType: event.target.value }))} className="h-10 rounded-lg border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"><option value="">Any room type</option><option value="PRIVATE">Private Room</option><option value="SHARED">Shared Room</option><option value="STUDIO">Studio</option><option value="ONE_BHK">1 BHK</option><option value="TWO_BHK">2 BHK</option></select>
-          <select aria-label="Furnishing" value={draft.furnishing} onChange={(event) => setDraft((current) => ({ ...current, furnishing: event.target.value }))} className="h-10 rounded-lg border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"><option value="">Any furnishing</option><option value="UNFURNISHED">Unfurnished</option><option value="SEMI_FURNISHED">Semi-Furnished</option><option value="FURNISHED">Furnished</option></select>
-          <select aria-label="Sort listings" value={draft.sort} onChange={(event) => setDraft((current) => ({ ...current, sort: event.target.value as FilterForm['sort'] }))} className="h-10 rounded-lg border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"><option value="score">Relevance</option><option value="rent">Price: low to high</option><option value="recency">Newest</option></select>
-        </div>
-        <div className="mt-4 flex flex-wrap justify-end gap-3">
-          <button type="button" onClick={resetFilters} className="h-10 px-3 text-sm font-medium text-muted-foreground hover:text-foreground">Reset</button>
-          <button type="submit" className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"><Search className="h-4 w-4" />Apply filters</button>
-        </div>
-      </form>
+      {/* Filter panel */}
+      <div className="card-elevated rounded-2xl mb-8 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setFiltersOpen(!filtersOpen)}
+          className="w-full flex items-center justify-between p-4 text-sm font-semibold text-foreground hover:bg-surface-2 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <SlidersHorizontal className="h-4 w-4 text-gold" />
+            Filters
+          </div>
+          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${filtersOpen ? 'rotate-180' : ''}`} />
+        </button>
 
+        {filtersOpen && (
+          <form onSubmit={applyFilters} className="border-t border-border p-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+              <input aria-label="City" value={draft.city} onChange={(e) => setDraft((c) => ({ ...c, city: e.target.value }))} placeholder="City" className="input-dark h-10 px-3 text-sm" />
+              <input aria-label="Min rent" type="number" min={1} value={draft.minRent} onChange={(e) => setDraft((c) => ({ ...c, minRent: e.target.value }))} placeholder="Min rent" className="input-dark h-10 px-3 text-sm" />
+              <input aria-label="Max rent" type="number" min={1} value={draft.maxRent} onChange={(e) => setDraft((c) => ({ ...c, maxRent: e.target.value }))} placeholder="Max rent" className="input-dark h-10 px-3 text-sm" />
+              <select aria-label="Room type" value={draft.roomType} onChange={(e) => setDraft((c) => ({ ...c, roomType: e.target.value }))} className="input-dark h-10 px-3 text-sm">
+                <option value="">Any room type</option>
+                <option value="PRIVATE">Private Room</option>
+                <option value="SHARED">Shared Room</option>
+                <option value="STUDIO">Studio</option>
+                <option value="ONE_BHK">1 BHK</option>
+                <option value="TWO_BHK">2 BHK</option>
+              </select>
+              <select aria-label="Furnishing" value={draft.furnishing} onChange={(e) => setDraft((c) => ({ ...c, furnishing: e.target.value }))} className="input-dark h-10 px-3 text-sm">
+                <option value="">Any furnishing</option>
+                <option value="UNFURNISHED">Unfurnished</option>
+                <option value="SEMI_FURNISHED">Semi-Furnished</option>
+                <option value="FURNISHED">Furnished</option>
+              </select>
+              <select aria-label="Sort" value={draft.sort} onChange={(e) => setDraft((c) => ({ ...c, sort: e.target.value as FilterForm['sort'] }))} className="input-dark h-10 px-3 text-sm">
+                <option value="score">Best match</option>
+                <option value="rent">Price: low → high</option>
+                <option value="recency">Newest</option>
+              </select>
+            </div>
+            <div className="mt-4 flex flex-wrap justify-end gap-3">
+              <button type="button" onClick={resetFilters} className="h-9 px-4 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+                Reset
+              </button>
+              <button type="submit" className="btn-gold h-9 px-4 text-sm flex items-center gap-2">
+                <Search className="h-4 w-4" /> Apply filters
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+
+      {/* Results */}
       {listingsQuery.isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{[0, 1, 2].map((index) => <div key={index} className="h-80 animate-pulse rounded-2xl bg-secondary" />)}</div>
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="skeleton h-[380px] rounded-2xl" style={{ animationDelay: `${i * 0.1}s` }} />
+          ))}
+        </div>
       ) : listingsQuery.isError ? (
-        <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-6 text-center"><p className="font-medium text-destructive">Listings could not be loaded.</p><button type="button" onClick={() => listingsQuery.refetch()} className="mt-3 text-sm font-semibold text-primary hover:underline">Try again</button></div>
+        <div className="rounded-2xl border border-destructive/20 p-8 text-center"
+          style={{ background: 'hsl(0 65% 60% / 0.05)' }}
+        >
+          <p className="font-medium text-red-400">Listings could not be loaded.</p>
+          <button type="button" onClick={() => listingsQuery.refetch()} className="mt-3 text-sm font-semibold text-gold hover:underline">
+            Try again
+          </button>
+        </div>
       ) : listings.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-16 text-center"><Building2 className="mx-auto h-8 w-8 text-primary" /><h2 className="mt-4 text-lg font-semibold">No listings match your filters.</h2><p className="mt-2 text-sm text-muted-foreground">Try adjusting your search to see more rooms.</p></div>
+        <div className="card-elevated rounded-2xl px-8 py-16 text-center border-dashed">
+          <Building2 className="mx-auto h-8 w-8 text-gold opacity-50" />
+          <h2 className="mt-4 font-serif text-lg font-semibold text-foreground">No listings match your filters</h2>
+          <p className="mt-2 text-sm text-muted-foreground">Try adjusting your search to see more rooms.</p>
+        </div>
       ) : (
         <>
-          <p className="mb-4 text-sm text-muted-foreground">Showing {listings.length} matching {listings.length === 1 ? 'listing' : 'listings'}</p>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{listings.map((listing) => <ListingResultCard key={listing.id} listing={listing} />)}</div>
-          {listingsQuery.hasNextPage && <div className="mt-8 text-center"><button type="button" disabled={listingsQuery.isFetchingNextPage} onClick={() => listingsQuery.fetchNextPage()} className="h-10 rounded-lg border border-input bg-card px-5 text-sm font-medium hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50">{listingsQuery.isFetchingNextPage ? 'Loading…' : 'Load more listings'}</button></div>}
+          <p className="mb-5 text-xs text-muted-foreground">
+            Showing <span className="text-foreground font-semibold">{listings.length}</span> {listings.length === 1 ? 'listing' : 'listings'}
+          </p>
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {listings.map((listing, i) => (
+              <ListingResultCard key={listing.id} listing={listing} index={i} />
+            ))}
+          </div>
+          {listingsQuery.hasNextPage && (
+            <div className="mt-10 text-center">
+              <button
+                type="button"
+                disabled={listingsQuery.isFetchingNextPage}
+                onClick={() => listingsQuery.fetchNextPage()}
+                className="btn-ghost h-11 px-8 text-sm font-medium disabled:opacity-50"
+              >
+                {listingsQuery.isFetchingNextPage ? 'Loading…' : 'Load more listings'}
+              </button>
+            </div>
+          )}
         </>
       )}
     </section>

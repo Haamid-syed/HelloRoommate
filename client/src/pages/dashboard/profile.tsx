@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 import type { ApiResponse, TenantProfile, UpsertTenantProfileInput } from 'shared';
 import { api } from '@/lib/api';
+import { motion } from 'framer-motion';
 
 type ProfileFormState = {
   preferredCity: string;
@@ -15,18 +16,37 @@ type ProfileFormState = {
 };
 
 const initialForm: ProfileFormState = {
-  preferredCity: '',
-  preferredAreas: '',
-  budgetMin: '',
-  budgetMax: '',
+  preferredCity: '', preferredAreas: '', budgetMin: '', budgetMax: '',
   moveInDate: new Date().toISOString().slice(0, 10),
 };
 
-const currency = new Intl.NumberFormat('en-IN', {
-  style: 'currency',
-  currency: 'INR',
-  maximumFractionDigits: 0,
-});
+const currency = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
+
+function StatCard({ icon: Icon, label, children }: { icon: typeof MapPin; label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex gap-4 p-4 rounded-xl" style={{ background: 'hsl(var(--surface-2))' }}>
+      <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+        style={{ background: 'hsl(37 78% 60% / 0.1)' }}
+      >
+        <Icon className="h-4 w-4 text-gold" />
+      </div>
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+        <div className="mt-1">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-muted-foreground mb-2 tracking-wide uppercase">{label}</label>
+      {children}
+      {hint && <p className="mt-1.5 text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
 
 export default function TenantProfilePage() {
   const queryClient = useQueryClient();
@@ -42,7 +62,6 @@ export default function TenantProfilePage() {
   useEffect(() => {
     const profile = profileQuery.data;
     if (!profile) return;
-
     setForm({
       preferredCity: profile.preferredCity,
       preferredAreas: profile.preferredAreas.join(', '),
@@ -58,7 +77,7 @@ export default function TenantProfilePage() {
       queryClient.invalidateQueries({ queryKey: ['tenant-profile'] });
       toast.success('Profile saved!');
     },
-    onError: () => toast.error('Could not save your profile. Please check the details and try again.'),
+    onError: () => toast.error('Could not save your profile. Please check the details.'),
   });
 
   const updateField = <K extends keyof ProfileFormState>(field: K, value: ProfileFormState[K]) => {
@@ -67,103 +86,125 @@ export default function TenantProfilePage() {
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const preferredAreas = form.preferredAreas.split(',').map((area) => area.trim()).filter((area) => area.length > 0);
+    const preferredAreas = form.preferredAreas.split(',').map((a) => a.trim()).filter((a) => a.length > 0);
     const budgetMin = Number(form.budgetMin);
     const budgetMax = Number(form.budgetMax);
-
-    if (preferredAreas.length === 0) {
-      toast.error('Add at least one preferred area.');
-      return;
-    }
-
-    if (budgetMin > budgetMax) {
-      toast.error('Minimum budget cannot exceed maximum budget.');
-      return;
-    }
-
-    upsertMutation.mutate({
-      preferredCity: form.preferredCity.trim(),
-      preferredAreas,
-      budgetMin,
-      budgetMax,
-      moveInDate: form.moveInDate,
-      preferences: {},
-    });
+    if (preferredAreas.length === 0) { toast.error('Add at least one preferred area.'); return; }
+    if (budgetMin > budgetMax) { toast.error('Minimum budget cannot exceed maximum.'); return; }
+    upsertMutation.mutate({ preferredCity: form.preferredCity.trim(), preferredAreas, budgetMin, budgetMax, moveInDate: form.moveInDate, preferences: {} });
   };
 
   if (profileQuery.isLoading) {
-    return <div className="py-16 text-center text-sm text-muted-foreground">Loading your profile…</div>;
+    return (
+      <div className="space-y-4">
+        {[0, 1, 2].map(i => <div key={i} className="skeleton h-20 rounded-2xl" style={{ animationDelay: `${i * 0.1}s` }} />)}
+      </div>
+    );
   }
 
   if (profileQuery.isError) {
-    return <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-6 text-center text-destructive">We couldn’t load your profile. Please refresh and try again.</div>;
+    return (
+      <div className="card-elevated rounded-2xl p-8 text-center">
+        <p className="font-medium text-red-400">We couldn't load your profile. Please refresh.</p>
+      </div>
+    );
   }
 
   const profile = profileQuery.data;
 
   return (
-    <section className="animate-fade-in">
-      <div className="mb-6">
-        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">Tenant dashboard</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight">Your room search profile</h1>
-        <p className="mt-1 text-sm text-muted-foreground">These preferences help surface listings that fit your move.</p>
+    <section>
+      <div className="mb-8">
+        <p className="label-overline">Tenant Dashboard</p>
+        <h1 className="font-serif text-display-md text-foreground mt-2">Your search profile</h1>
+        <p className="mt-1.5 text-sm text-muted-foreground">
+          These preferences power your AI compatibility scores.
+        </p>
       </div>
 
       {profile ? (
-        <div className="mb-6 grid gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm sm:grid-cols-3">
-          <div className="flex gap-3">
-            <MapPin className="mt-0.5 h-5 w-5 text-primary" />
-            <div><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Preferred city</p><p className="mt-1 font-semibold">{profile.preferredCity}</p><div className="mt-2 flex flex-wrap gap-1.5">{profile.preferredAreas.map((area) => <span key={area} className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{area}</span>)}</div></div>
-          </div>
-          <div className="flex gap-3">
-            <Wallet className="mt-0.5 h-5 w-5 text-primary" />
-            <div><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Monthly budget</p><p className="mt-1 font-semibold">{currency.format(profile.budgetMin)} – {currency.format(profile.budgetMax)}</p></div>
-          </div>
-          <div className="flex gap-3">
-            <CalendarDays className="mt-0.5 h-5 w-5 text-primary" />
-            <div><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Move-in date</p><p className="mt-1 font-semibold">{format(new Date(profile.moveInDate), 'MMMM d, yyyy')}</p></div>
-          </div>
-        </div>
+        <motion.div
+          className="mb-8 grid gap-3 sm:grid-cols-3 card-elevated rounded-2xl p-5"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <StatCard icon={MapPin} label="Preferred location">
+            <p className="font-semibold text-sm text-foreground">{profile.preferredCity}</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {profile.preferredAreas.map((area) => (
+                <span key={area} className="text-[11px] px-2 py-0.5 rounded-full font-medium"
+                  style={{ background: 'hsl(37 78% 60% / 0.12)', color: 'hsl(37 78% 65%)' }}
+                >
+                  {area}
+                </span>
+              ))}
+            </div>
+          </StatCard>
+          <StatCard icon={Wallet} label="Monthly budget">
+            <p className="font-semibold text-sm text-foreground">{currency.format(profile.budgetMin)} – {currency.format(profile.budgetMax)}</p>
+          </StatCard>
+          <StatCard icon={CalendarDays} label="Move-in date">
+            <p className="font-semibold text-sm text-foreground">{format(new Date(profile.moveInDate), 'MMMM d, yyyy')}</p>
+          </StatCard>
+        </motion.div>
       ) : (
-        <div className="mb-6 rounded-2xl border border-primary/20 bg-primary/5 p-5">
-          <h2 className="font-semibold">Set up your profile to start finding rooms.</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Tell us where and when you want to move, plus your budget.</p>
-        </div>
+        <motion.div
+          className="mb-8 rounded-2xl p-5 border"
+          style={{ background: 'hsl(37 78% 60% / 0.06)', borderColor: 'hsl(37 78% 60% / 0.2)' }}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <h2 className="font-semibold text-foreground">Set up your profile to start finding rooms</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Tell us where and when you want to move, plus your budget range.</p>
+        </motion.div>
       )}
 
-      <form onSubmit={handleSubmit} className="max-w-3xl rounded-2xl border border-border bg-card p-5 shadow-xl sm:p-8">
-        <h2 className="text-lg font-semibold">{profile ? 'Update preferences' : 'Search preferences'}</h2>
+      <motion.form
+        onSubmit={handleSubmit}
+        className="max-w-3xl card-elevated rounded-2xl p-6 sm:p-8"
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <h2 className="font-serif text-lg font-semibold text-foreground">
+          {profile ? 'Update preferences' : 'Search preferences'}
+        </h2>
+
         <div className="mt-6 grid gap-5 sm:grid-cols-2">
-          <div>
-            <label htmlFor="preferredCity" className="mb-2 block text-sm font-medium">Preferred city</label>
-            <input id="preferredCity" value={form.preferredCity} onChange={(event) => updateField('preferredCity', event.target.value)} placeholder="Mumbai" required minLength={2} className="h-11 w-full rounded-lg border border-input bg-background px-4 placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30" />
-          </div>
-          <div>
-            <label htmlFor="preferredAreas" className="mb-2 block text-sm font-medium">Preferred areas</label>
-            <input id="preferredAreas" value={form.preferredAreas} onChange={(event) => updateField('preferredAreas', event.target.value)} placeholder="Andheri West, Bandra, Juhu" required className="h-11 w-full rounded-lg border border-input bg-background px-4 placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30" />
-            <p className="mt-1.5 text-xs text-muted-foreground">Separate areas with commas.</p>
-          </div>
-          <div>
-            <label htmlFor="budgetMin" className="mb-2 block text-sm font-medium">Minimum budget (₹)</label>
-            <input id="budgetMin" type="number" value={form.budgetMin} onChange={(event) => updateField('budgetMin', event.target.value)} required min={1} step={1} placeholder="15000" className="h-11 w-full rounded-lg border border-input bg-background px-4 placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30" />
-          </div>
-          <div>
-            <label htmlFor="budgetMax" className="mb-2 block text-sm font-medium">Maximum budget (₹)</label>
-            <input id="budgetMax" type="number" value={form.budgetMax} onChange={(event) => updateField('budgetMax', event.target.value)} required min={1} step={1} placeholder="22000" className="h-11 w-full rounded-lg border border-input bg-background px-4 placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30" />
-          </div>
-          <div>
-            <label htmlFor="moveInDate" className="mb-2 block text-sm font-medium">Move-in date</label>
-            <input id="moveInDate" type="date" value={form.moveInDate} onChange={(event) => updateField('moveInDate', event.target.value)} required className="h-11 w-full rounded-lg border border-input bg-background px-4 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30" />
-          </div>
+          <Field label="Preferred city">
+            <input id="preferredCity" value={form.preferredCity} onChange={(e) => updateField('preferredCity', e.target.value)}
+              placeholder="Mumbai" required minLength={2} className="input-dark w-full h-12 px-4 text-sm" />
+          </Field>
+          <Field label="Preferred areas" hint="Separate areas with commas">
+            <input id="preferredAreas" value={form.preferredAreas} onChange={(e) => updateField('preferredAreas', e.target.value)}
+              placeholder="Andheri West, Bandra, Juhu" required className="input-dark w-full h-12 px-4 text-sm" />
+          </Field>
+          <Field label="Minimum budget (₹)">
+            <input id="budgetMin" type="number" value={form.budgetMin} onChange={(e) => updateField('budgetMin', e.target.value)}
+              required min={1} step={1} placeholder="15000" className="input-dark w-full h-12 px-4 text-sm" />
+          </Field>
+          <Field label="Maximum budget (₹)">
+            <input id="budgetMax" type="number" value={form.budgetMax} onChange={(e) => updateField('budgetMax', e.target.value)}
+              required min={1} step={1} placeholder="22000" className="input-dark w-full h-12 px-4 text-sm" />
+          </Field>
+          <Field label="Move-in date">
+            <input id="moveInDate" type="date" value={form.moveInDate} onChange={(e) => updateField('moveInDate', e.target.value)}
+              required className="input-dark w-full h-12 px-4 text-sm" />
+          </Field>
         </div>
 
         <div className="mt-8 flex justify-end border-t border-border pt-6">
-          <button type="submit" disabled={upsertMutation.isPending} className="inline-flex h-11 items-center gap-2 rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50">
+          <button
+            type="submit"
+            disabled={upsertMutation.isPending}
+            className="btn-gold h-11 px-6 text-sm inline-flex items-center gap-2 disabled:opacity-50"
+          >
             <Save className="h-4 w-4" />
             {upsertMutation.isPending ? 'Saving…' : 'Save profile'}
           </button>
         </div>
-      </form>
+      </motion.form>
     </section>
   );
 }
