@@ -1,8 +1,32 @@
 import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/lib/api';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { LogOut, Home, User } from 'lucide-react';
+import { Building2, Home, LogOut, Search, User, UserRoundPen } from 'lucide-react';
+import type { ReactNode } from 'react';
+import OwnerListings from './listings/mine';
+import CreateListing from './listings/create';
+import TenantProfilePage from './profile';
+import BrowseListings from './browse';
+
+function RoleOnly({ role, children }: { role: 'OWNER' | 'TENANT'; children: ReactNode }) {
+  const user = useAuthStore((state) => state.user);
+  return user?.role === role ? <>{children}</> : <Navigate to="/dashboard" replace />;
+}
+
+function DashboardHome() {
+  const user = useAuthStore((state) => state.user);
+
+  if (user?.role === 'OWNER') return <Navigate to="listings" replace />;
+  if (user?.role === 'TENANT') return <Navigate to="profile" replace />;
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-8 text-center shadow-sm">
+      <h1 className="text-xl font-bold">Admin tools are on the way</h1>
+      <p className="mt-2 text-sm text-muted-foreground">The platform-management workspace will arrive in a later phase.</p>
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const { user, logout } = useAuthStore();
@@ -52,21 +76,33 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* Main content */}
+      <div className="border-b border-border bg-card/50">
+        <nav className="container flex gap-1 overflow-x-auto" aria-label="Dashboard navigation">
+          {user?.role === 'OWNER' && (
+            <>
+              <NavLink to="/dashboard/listings" end className={({ isActive }) => `inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-4 text-sm font-medium transition ${isActive ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}><Building2 className="h-4 w-4" />My listings</NavLink>
+              <NavLink to="/dashboard/listings/new" className={({ isActive }) => `inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-4 text-sm font-medium transition ${isActive ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}><Home className="h-4 w-4" />Create listing</NavLink>
+            </>
+          )}
+          {user?.role === 'TENANT' && (
+            <>
+              <NavLink to="/dashboard/profile" className={({ isActive }) => `inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-4 text-sm font-medium transition ${isActive ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}><UserRoundPen className="h-4 w-4" />My profile</NavLink>
+              <NavLink to="/dashboard/browse" className={({ isActive }) => `inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-4 text-sm font-medium transition ${isActive ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}><Search className="h-4 w-4" />Browse listings</NavLink>
+            </>
+          )}
+        </nav>
+      </div>
+
       <main className="container py-8">
-        <div className="text-center py-20">
-          <h2 className="text-2xl font-bold mb-4">Welcome, {user?.name}! 👋</h2>
-          <p className="text-muted-foreground max-w-md mx-auto">
-            {user?.role === 'OWNER'
-              ? 'Start listing your rooms and manage tenant interests.'
-              : user?.role === 'TENANT'
-                ? 'Set up your profile and find your perfect room.'
-                : 'Manage the platform from the admin dashboard.'}
-          </p>
-          <p className="text-sm text-muted-foreground mt-4">
-            Dashboard features coming in Phase 2... 🚧
-          </p>
-        </div>
+        <Routes>
+          <Route path="listings" element={<RoleOnly role="OWNER"><OwnerListings /></RoleOnly>} />
+          <Route path="listings/new" element={<RoleOnly role="OWNER"><CreateListing /></RoleOnly>} />
+          <Route path="listings/:id/edit" element={<RoleOnly role="OWNER"><CreateListing /></RoleOnly>} />
+          <Route path="profile" element={<RoleOnly role="TENANT"><TenantProfilePage /></RoleOnly>} />
+          <Route path="browse" element={<RoleOnly role="TENANT"><BrowseListings /></RoleOnly>} />
+          <Route index element={<DashboardHome />} />
+          <Route path="*" element={<DashboardHome />} />
+        </Routes>
       </main>
     </div>
   );
