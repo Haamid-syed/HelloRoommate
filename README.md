@@ -464,9 +464,44 @@ See [`.env.example`](.env.example) for all variables. Key ones:
 
 ---
 
-## Deployment
+## Deployment & Local Testing Loops
 
-### Render / Railway
+### Database Seeding
+To reset the database and seed it with realistic, interrelated test data (including admins, owners, listings, tenants, compatibility scores, interests, conversations, and messages):
+```bash
+npm run seed
+```
+
+### Rate Limiting Configurations
+We enforce strict Redis-backed sliding-window rate limiting to prevent API abuse:
+- **Auth Routes** (`/api/v1/auth/login`, `/api/v1/auth/register`, `/api/v1/auth/refresh`): Max 5 requests per minute.
+- **General API Routes** (`/api/v1/*`): Max 100 requests per minute.
+
+If Redis goes down, the rate limiter **fails open** to avoid blocking application traffic.
+
+### Local Testing Loops
+
+#### 1. Rate Limiter Verification (Auth & API)
+To test the sliding-window rate limits locally:
+```bash
+# General API rate limiting (expect requests 101-105 to fail with 429)
+for i in {1..105}; do curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5001/api/v1/listings; done
+
+# Auth endpoint rate limiting (expect requests 6-7 to fail with 429)
+for i in {1..7}; do curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:5001/api/v1/auth/login; done
+```
+
+#### 2. Health and Readiness Checks
+Verify the system status using:
+```bash
+# Liveness Check
+curl http://localhost:5001/healthz
+
+# Readiness Check (checks Postgres + Redis dependencies)
+curl http://localhost:5001/readyz
+```
+
+### Deployment (Render / Railway)
 
 1. **API Service**: `cd server && npm install && npx prisma migrate deploy && npm start`
 2. **Worker Service**: Same image, set `WORKER=1` env var → runs BullMQ processors
