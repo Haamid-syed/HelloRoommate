@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Home, Save } from 'lucide-react';
+import { ArrowLeft, Camera, Home, Loader2, Save, Trash2 } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import type { ApiResponse, CreateListingInput, Listing, UpdateListingInput } from 'shared';
@@ -29,6 +29,7 @@ type ListingFormState = {
   roomType: CreateListingInput['roomType'];
   furnishing: CreateListingInput['furnishing'];
   description: string;
+  photoUrls: string[];
 };
 
 const initialForm: ListingFormState = {
@@ -40,6 +41,7 @@ const initialForm: ListingFormState = {
   roomType: 'PRIVATE',
   furnishing: 'SEMI_FURNISHED',
   description: '',
+  photoUrls: [],
 };
 
 function toDateInput(value: string) {
@@ -51,6 +53,7 @@ export default function CreateListing() {
   const { id: listingId } = useParams<{ id: string }>();
   const isEditing = Boolean(listingId);
   const [form, setForm] = useState<ListingFormState>(initialForm);
+  const [isUploading, setIsUploading] = useState(false);
 
   const listingQuery = useQuery({
     queryKey: ['listing', listingId],
@@ -77,6 +80,7 @@ export default function CreateListing() {
       roomType: listing.roomType,
       furnishing: listing.furnishing,
       description: listing.description,
+      photoUrls: listing.photos.map((p) => p.url),
     });
   }, [listingQuery.data]);
 
@@ -102,6 +106,55 @@ export default function CreateListing() {
     setForm((current) => ({ ...current, [field]: value }));
   };
 
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Only image files are allowed');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image size must be less than 5MB');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('photo', file);
+
+    setIsUploading(true);
+    const toastId = toast.loading('Uploading image to Cloudinary...');
+
+    try {
+      const response = await api.post<ApiResponse<{ url: string }>>('/listings/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const url = response.data.data?.url;
+      if (!url) throw new Error('Secure URL missing from response');
+
+      setForm((current) => ({
+        ...current,
+        photoUrls: [...current.photoUrls, url],
+      }));
+      toast.success('Image uploaded successfully!', { id: toastId });
+    } catch (error: any) {
+      const message = error.response?.data?.error?.message ?? 'Failed to upload photo';
+      toast.error(message, { id: toastId });
+    } finally {
+      setIsUploading(false);
+      // Clear file input value to allow uploading same file again
+      event.target.value = '';
+    }
+  };
+
+  const removePhoto = (indexToRemove: number) => {
+    setForm((current) => ({
+      ...current,
+      photoUrls: current.photoUrls.filter((_, idx) => idx !== indexToRemove),
+    }));
+  };
+
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -114,7 +167,7 @@ export default function CreateListing() {
       roomType: form.roomType,
       furnishing: form.furnishing,
       description: form.description.trim(),
-      photoUrls: [],
+      photoUrls: form.photoUrls,
     };
 
     if (isEditing) updateMutation.mutate(payload);
@@ -122,7 +175,7 @@ export default function CreateListing() {
   };
 
   if (isEditing && listingQuery.isLoading) {
-    return <div className="py-16 text-center text-sm text-muted-foreground">Loading listing…</div>;
+    return <div className="py-16 text-center text-sm text-muted-foreground animate-pulse">Loading listing…</div>;
   }
 
   if (isEditing && listingQuery.isError) {
@@ -209,15 +262,59 @@ export default function CreateListing() {
             <textarea id="description" value={form.description} onChange={(event) => updateField('description', event.target.value)} placeholder="Share what makes this room and the home a great fit." maxLength={2000} rows={5} className="w-full resize-y rounded-lg border border-input bg-background px-4 py-3 placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30" />
           </div>
 
-          <div className="flex items-start gap-3 rounded-xl border border-dashed border-border bg-secondary/40 p-4 text-sm text-muted-foreground">
-            <Home className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-            <p><span className="font-medium text-foreground">Photos are coming soon.</span> You’ll be able to add room photos here when Cloudinary uploads are connected.</p>
+          {/* Room Photos Upload Widget */}
+          <div className="space-y-4 rounded-xl border border-dashed border-border bg-secondary/20 p-5">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Room Photos</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">Upload images of your room. Supported formats: PNG, JPG, WEBP. Max size 5MB.</p>
+            </div>
+
+            {/* Thumbnail Grid */}
+            {form.photoUrls.length > 0 && (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                {form.photoUrls.map((url, index) => (
+                  <div key={url} className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-border bg-muted">
+                    <img src={url} alt="" className="h-full w-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => removePhoto(index)}
+                      className="absolute right-2 top-2 rounded-lg bg-destructive p-1.5 text-white opacity-0 shadow-sm transition hover:scale-105 group-hover:opacity-100"
+                      title="Remove image"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Upload Button Trigger */}
+            <div className="flex items-center gap-4">
+              <label className="relative flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-primary/10 px-4 py-2.5 text-sm font-semibold text-primary transition hover:bg-primary/20 disabled:cursor-not-allowed">
+                {isUploading ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                ) : (
+                  <Camera className="h-4 w-4 text-primary" />
+                )}
+                <span>{isUploading ? 'Uploading…' : 'Add a photo'}</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileUpload}
+                  disabled={isUploading}
+                  className="sr-only"
+                />
+              </label>
+              <span className="text-xs text-muted-foreground">
+                {form.photoUrls.length} photo{form.photoUrls.length === 1 ? '' : 's'} added
+              </span>
+            </div>
           </div>
         </div>
 
         <div className="mt-8 flex flex-col-reverse gap-3 border-t border-border pt-6 sm:flex-row sm:justify-end">
           <Link to="/dashboard/listings" className="inline-flex h-11 items-center justify-center rounded-lg px-4 text-sm font-medium text-muted-foreground hover:bg-secondary hover:text-foreground">Cancel</Link>
-          <button type="submit" disabled={isSaving} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50">
+          <button type="submit" disabled={isSaving || isUploading} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50">
             <Save className="h-4 w-4" />
             {isSaving ? 'Saving…' : isEditing ? 'Save changes' : 'Create listing'}
           </button>
@@ -226,3 +323,4 @@ export default function CreateListing() {
     </section>
   );
 }
+

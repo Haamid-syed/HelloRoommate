@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import type { NextFunction, Request, Response } from 'express';
+import multer from 'multer';
 import {
   createListingSchema,
   listingsFilterSchema,
@@ -9,6 +10,7 @@ import {
   updateListingSchema,
 } from 'shared';
 import { prisma } from '../../lib/prisma.js';
+import { uploadToCloudinary } from '../../lib/cloudinary.js';
 import { authenticate, requireRole } from '../../middleware/auth.js';
 import { validate } from '../../middleware/validate.js';
 import { getOrGenerateExplanation } from '../../services/explanation.service.js';
@@ -16,7 +18,38 @@ import * as listingService from '../../services/listing.service.js';
 
 const router = Router();
 
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(Object.assign(new Error('Only images are allowed'), { statusCode: 400 }) as any);
+    }
+  },
+});
+
 type RequestWithValidatedQuery<T> = Request & { validatedQuery: T };
+
+router.post(
+  '/upload',
+  authenticate,
+  requireRole('OWNER'),
+  upload.single('photo'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.file) {
+        res.status(400).json({ success: false, error: { message: 'Photo file is required' } });
+        return;
+      }
+      const secureUrl = await uploadToCloudinary(req.file.buffer);
+      res.json({ success: true, data: { url: secureUrl } });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 function validatedQuery<T>(req: Request): T {
   return (req as RequestWithValidatedQuery<T>).validatedQuery;

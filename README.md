@@ -393,7 +393,7 @@ Listings: [{"id":"listing-0","area":"Andheri W","city":"Mumbai","rent":18000,"av
 - **Circuit breaker**: Opens after 5 consecutive failures, half-open probe after 60s
 - **Hash-based caching**: `SHA-256(profile + listing)` — skip if score exists with same hash
 - **Per-item fallback**: If one item in a batch fails, only that item falls back — not the whole batch
-- **Rate limiting**: Token-bucket on the LLM client
+- **Rate limiting**: Local in-memory Token Bucket rate limiter capping outgoing LLM requests to 10 RPM and queueing concurrent request bursts sequentially
 - **Cost tracking**: Log tokens used per call
 
 ---
@@ -456,7 +456,7 @@ See [`.env.example`](.env.example) for all variables. Key ones:
 | `JWT_SECRET` | Secret for signing access tokens | — |
 | `JWT_REFRESH_SECRET` | Secret for signing refresh tokens | — |
 | `OPENROUTER_API_KEY` | OpenRouter API key for LLM scoring | — |
-| `OPENROUTER_MODEL` | Model to use for scoring | `google/gemini-2.0-flash-exp:free` |
+| `OPENROUTER_MODEL` | Model to use for scoring | `meta-llama/llama-3.3-70b-instruct:free` |
 | `EMAIL_PROVIDER` | `console` (dev) or `resend` (prod) | `console` |
 | `PORT` | Server port | `5001` |
 | `CORS_ORIGIN` | Allowed frontend origin | `http://localhost:5173` |
