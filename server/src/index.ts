@@ -1,17 +1,18 @@
 import http from 'http';
 import { createApp } from './app.js';
 import { env } from './config/env.js';
+import { startEmailWorker } from './jobs/email.worker.js';
 import { startScoringWorker } from './jobs/scoring.worker.js';
 import { logger } from './lib/logger.js';
 import { prisma } from './lib/prisma.js';
+import { setupSocketIO } from './socket/index.js';
 
 async function main() {
   const app = createApp();
   const server = http.createServer(app);
+  setupSocketIO(server);
   const scoringWorker = startScoringWorker();
-
-  // Socket.IO will be attached here in Phase 4
-  // const io = setupSocketIO(server);
+  const emailWorker = startEmailWorker();
 
   // Graceful shutdown
   const shutdown = async (signal: string) => {
@@ -23,6 +24,9 @@ async function main() {
 
     await scoringWorker.close();
     logger.info('Scoring worker stopped');
+
+    await emailWorker.close();
+    logger.info('Email outbox worker stopped');
 
     await prisma.$disconnect();
     logger.info('Database disconnected');

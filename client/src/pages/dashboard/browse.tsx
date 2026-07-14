@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import { format } from 'date-fns';
-import { Building2, ChevronDown, MapPin, Search, SlidersHorizontal, UserRound, Wallet } from 'lucide-react';
-import type { ApiResponse, Listing, ListingsFilterInput } from 'shared';
+import { Building2, CheckCircle2, ChevronDown, Clock, MapPin, Search, Send, SlidersHorizontal, UserRound, Wallet, XCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
+import type { ApiResponse, Interest, Listing, ListingsFilterInput } from 'shared';
 import { api } from '@/lib/api';
 
 type ListingSearchResponse = ApiResponse<{ listings: Listing[] }>;
@@ -40,8 +42,36 @@ function scoreColor(score: number) {
   return 'border-rose-200 bg-rose-50 text-rose-700';
 }
 
+function apiErrorMessage(error: unknown, fallback: string): string {
+  if (isAxiosError<ApiResponse>(error)) {
+    return error.response?.data.error?.message ?? fallback;
+  }
+
+  return fallback;
+}
+
 function ListingResultCard({ listing }: { listing: Listing }) {
   const score = listing.score?.score;
+  const queryClient = useQueryClient();
+  const expressInterestMutation = useMutation({
+    mutationFn: async (): Promise<Interest> => {
+      const response = await api.post<ApiResponse<{ interest: Interest }>>('/interests', {
+        listingId: listing.id,
+      });
+      const interest = response.data.data?.interest;
+      if (!interest) throw new Error('Interest was not returned by the server');
+      return interest;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['listings'] });
+      void queryClient.invalidateQueries({ queryKey: ['my-interests'] });
+      toast.success('Interest expressed successfully!');
+    },
+    onError: (error: unknown) => {
+      toast.error(apiErrorMessage(error, 'Failed to express interest'));
+    },
+  });
+  const activeInterest = listing.interest;
 
   return (
     <article className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
@@ -82,6 +112,38 @@ function ListingResultCard({ listing }: { listing: Listing }) {
           <p className="flex items-center gap-2 font-semibold"><Wallet className="h-4 w-4 text-primary" />{currency.format(listing.rent)}/mo <span className="font-normal text-muted-foreground">• {listing.furnishing.replace('_', ' ')}</span></p>
           <p className="text-muted-foreground">Available {format(new Date(listing.availableFrom), 'MMM d, yyyy')}</p>
           <p className="flex items-center gap-2 text-muted-foreground"><UserRound className="h-4 w-4" />Listed by {listing.owner?.name ?? 'Room owner'}</p>
+        </div>
+
+        <div className="mt-5 border-t border-border pt-4">
+          {activeInterest ? (
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              {activeInterest.status === 'PENDING' && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                  <Clock className="h-3.5 w-3.5" /> Pending interest
+                </span>
+              )}
+              {activeInterest.status === 'ACCEPTED' && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Interest accepted
+                </span>
+              )}
+              {activeInterest.status === 'DECLINED' && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700">
+                  <XCircle className="h-3.5 w-3.5" /> Interest declined
+                </span>
+              )}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => expressInterestMutation.mutate()}
+              disabled={expressInterestMutation.isPending}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary/10 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Send className="h-4 w-4" />
+              {expressInterestMutation.isPending ? 'Sending…' : 'Express interest'}
+            </button>
+          )}
         </div>
 
         <details className="group mt-5 border-t border-border pt-4">

@@ -66,6 +66,7 @@ export interface Listing {
   photos: ListingPhoto[];
   owner?: Pick<User, 'id' | 'name' | 'email'>;
   score?: CompatibilityScore | null;
+  interest?: Pick<Interest, 'id' | 'status'> | null;
   createdAt: string;
   updatedAt: string;
 }

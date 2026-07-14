@@ -131,5 +131,6 @@ export type UpdateListingInput = z.infer<typeof updateListingSchema>;
 export type UpsertTenantProfileInput = z.infer<typeof upsertTenantProfileSchema>;
 export type CreateInterestInput = z.infer<typeof createInterestSchema>;
 export type SendMessageInput = z.infer<typeof sendMessageSchema>;
+export type UpdateUserStatusInput = z.infer<typeof updateUserStatusSchema>;
 export type ListingsFilterInput = z.infer<typeof listingsFilterSchema>;
 export type PaginationInput = z.infer<typeof paginationSchema>;

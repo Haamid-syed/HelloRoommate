@@ -21,8 +21,14 @@ redis.on('error', (err) => {
 
 // Create a subscriber connection for Socket.IO adapter
 export const createRedisSubscriber = () => {
-  return new Redis(env.REDIS_URL, {
+  const subscriber = new Redis(env.REDIS_URL, {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
   });
+
+  subscriber.on('error', (err) => {
+    logger.error({ err }, '❌ Redis subscriber connection error');
+  });
+
+  return subscriber;
 };

@@ -28,24 +28,37 @@ async function getOwnedListing(listingId: string, ownerId: string) {
 
 /** Create a listing and its optional placeholder photo records. */
 export async function createListing(ownerId: string, input: CreateListingInput) {
-  const listing = await prisma.listing.create({
-    data: {
-      ownerId,
-      title: input.title,
-      city: input.city,
-      area: input.area,
-      lat: input.lat ?? null,
-      lng: input.lng ?? null,
-      rent: input.rent,
-      availableFrom: new Date(input.availableFrom),
-      roomType: input.roomType,
-      furnishing: input.furnishing,
-      description: input.description ?? '',
-      photos: {
-        create: (input.photoUrls ?? []).map((url, position) => ({ url, position })),
+  const listing = await prisma.$transaction(async (tx) => {
+    const createdListing = await tx.listing.create({
+      data: {
+        ownerId,
+        title: input.title,
+        city: input.city,
+        area: input.area,
+        lat: input.lat ?? null,
+        lng: input.lng ?? null,
+        rent: input.rent,
+        availableFrom: new Date(input.availableFrom),
+        roomType: input.roomType,
+        furnishing: input.furnishing,
+        description: input.description ?? '',
+        photos: {
+          create: (input.photoUrls ?? []).map((url, position) => ({ url, position })),
+        },
       },
-    },
-    include: listingInclude,
+      include: listingInclude,
+    });
+
+    await tx.auditLog.create({
+      data: {
+        actorId: ownerId,
+        action: 'LISTING_CREATED',
+        entityType: 'LISTING',
+        entityId: createdListing.id,
+      },
+    });
+
+    return createdListing;
   });
 
   enqueueScoresForListing(listing.id).catch((err) => {
@@ -83,11 +96,22 @@ export async function updateListing(listingId: string, ownerId: string, input: U
       }
     }
 
-    return tx.listing.update({
+    const updatedListing = await tx.listing.update({
       where: { id: listingId },
       data,
       include: listingInclude,
     });
+
+    await tx.auditLog.create({
+      data: {
+        actorId: ownerId,
+        action: 'LISTING_UPDATED',
+        entityType: 'LISTING',
+        entityId: listingId,
+      },
+    });
+
+    return updatedListing;
   });
 
   enqueueScoresForListing(updated.id).catch((err) => {
@@ -105,10 +129,23 @@ export async function fillListing(listingId: string, ownerId: string) {
     throw Object.assign(new Error('Only active listings can be marked as filled'), { statusCode: 400 });
   }
 
-  return prisma.listing.update({
-    where: { id: listingId },
-    data: { status: 'FILLED' },
-    include: listingInclude,
+  return prisma.$transaction(async (tx) => {
+    const updatedListing = await tx.listing.update({
+      where: { id: listingId },
+      data: { status: 'FILLED' },
+      include: listingInclude,
+    });
+
+    await tx.auditLog.create({
+      data: {
+        actorId: ownerId,
+        action: 'LISTING_FILLED',
+        entityType: 'LISTING',
+        entityId: listingId,
+      },
+    });
+
+    return updatedListing;
   });
 }
 
@@ -166,6 +203,9 @@ export async function searchListings(filters: ListingsFilterInput, tenantProfile
       compatibilityScores: tenantProfileId
         ? { where: { tenantProfileId }, take: 1 }
         : undefined,
+      interests: tenantProfileId
+        ? { where: { tenantProfileId }, select: { id: true, status: true } }
+        : undefined,
     },
     orderBy:
       filters.sort === 'rent'
@@ -200,14 +240,16 @@ export async function searchListings(filters: ListingsFilterInput, tenantProfile
 
   const { computeInlineFallbackScore } = await import('./scoring.service.js');
   const mappedListings = await Promise.all(
-    listings.map(async ({ compatibilityScores, ...listing }) => {
+    listings.map(async ({ compatibilityScores, interests, ...listing }) => {
+      const activeInterest = tenantProfileId ? interests?.[0] ?? null : null;
+
       if (!tenantProfileId || !tenantProfile) {
-        return { ...listing, score: null };
+        return { ...listing, score: null, interest: null };
       }
 
       const storedScore = compatibilityScores?.[0] ?? null;
       if (storedScore) {
-        return { ...listing, score: storedScore };
+        return { ...listing, score: storedScore, interest: activeInterest };
       }
 
       const inlineScore = await computeInlineFallbackScore(tenantProfile, listing);
@@ -220,7 +262,7 @@ export async function searchListings(filters: ListingsFilterInput, tenantProfile
           // Queue availability must not affect browse responses.
         });
 
-      return { ...listing, score: inlineScore };
+      return { ...listing, score: inlineScore, interest: activeInterest };
     })
   );
 

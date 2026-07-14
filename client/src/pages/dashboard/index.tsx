@@ -2,14 +2,17 @@ import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/lib/api';
 import { Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Building2, Home, LogOut, Search, User, UserRoundPen } from 'lucide-react';
+import { Building2, Home, LogOut, MessageSquare, Search, Send, Shield, User, UserRoundPen } from 'lucide-react';
 import type { ReactNode } from 'react';
 import OwnerListings from './listings/mine';
 import CreateListing from './listings/create';
 import TenantProfilePage from './profile';
 import BrowseListings from './browse';
+import InterestsPage from './interests';
+import ChatPage from './chat';
+import AdminDashboard from '../admin';
 
-function RoleOnly({ role, children }: { role: 'OWNER' | 'TENANT'; children: ReactNode }) {
+function RoleOnly({ role, children }: { role: 'OWNER' | 'TENANT' | 'ADMIN'; children: ReactNode }) {
   const user = useAuthStore((state) => state.user);
   return user?.role === role ? <>{children}</> : <Navigate to="/dashboard" replace />;
 }
@@ -19,6 +22,7 @@ function DashboardHome() {
 
   if (user?.role === 'OWNER') return <Navigate to="listings" replace />;
   if (user?.role === 'TENANT') return <Navigate to="profile" replace />;
+  if (user?.role === 'ADMIN') return <Navigate to="/dashboard/admin" replace />;
 
   return (
     <div className="rounded-2xl border border-border bg-card p-8 text-center shadow-sm">
@@ -82,13 +86,22 @@ export default function DashboardPage() {
             <>
               <NavLink to="/dashboard/listings" end className={({ isActive }) => `inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-4 text-sm font-medium transition ${isActive ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}><Building2 className="h-4 w-4" />My listings</NavLink>
               <NavLink to="/dashboard/listings/new" className={({ isActive }) => `inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-4 text-sm font-medium transition ${isActive ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}><Home className="h-4 w-4" />Create listing</NavLink>
+              <NavLink to="/dashboard/interests" className={({ isActive }) => `inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-4 text-sm font-medium transition ${isActive ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}><Send className="h-4 w-4" />Interests</NavLink>
+              <NavLink to="/dashboard/chat" className={({ isActive }) => `inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-4 text-sm font-medium transition ${isActive ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}><MessageSquare className="h-4 w-4" />Inbox</NavLink>
             </>
           )}
           {user?.role === 'TENANT' && (
             <>
               <NavLink to="/dashboard/profile" className={({ isActive }) => `inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-4 text-sm font-medium transition ${isActive ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}><UserRoundPen className="h-4 w-4" />My profile</NavLink>
               <NavLink to="/dashboard/browse" className={({ isActive }) => `inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-4 text-sm font-medium transition ${isActive ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}><Search className="h-4 w-4" />Browse listings</NavLink>
+              <NavLink to="/dashboard/interests" className={({ isActive }) => `inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-4 text-sm font-medium transition ${isActive ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}><Send className="h-4 w-4" />Sent interests</NavLink>
+              <NavLink to="/dashboard/chat" className={({ isActive }) => `inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-4 text-sm font-medium transition ${isActive ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}><MessageSquare className="h-4 w-4" />Inbox</NavLink>
             </>
+          )}
+          {user?.role === 'ADMIN' && (
+            <NavLink to="/dashboard/admin" className={({ isActive }) => `inline-flex h-12 shrink-0 items-center gap-2 border-b-2 px-4 text-sm font-medium transition ${isActive ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
+              <Shield className="h-4 w-4" /> Admin dashboard
+            </NavLink>
           )}
         </nav>
       </div>
@@ -100,6 +113,9 @@ export default function DashboardPage() {
           <Route path="listings/:id/edit" element={<RoleOnly role="OWNER"><CreateListing /></RoleOnly>} />
           <Route path="profile" element={<RoleOnly role="TENANT"><TenantProfilePage /></RoleOnly>} />
           <Route path="browse" element={<RoleOnly role="TENANT"><BrowseListings /></RoleOnly>} />
+          <Route path="interests" element={<InterestsPage />} />
+          <Route path="chat" element={<ChatPage />} />
+          <Route path="admin/*" element={<RoleOnly role="ADMIN"><AdminDashboard /></RoleOnly>} />
           <Route index element={<DashboardHome />} />
           <Route path="*" element={<DashboardHome />} />
         </Routes>
