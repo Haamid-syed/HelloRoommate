@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type { PaginationInput } from 'shared';
 import { prisma } from '../lib/prisma.js';
-import { computeInlineFallbackScore } from './scoring.service.js';
+
 
 type InterestRole = 'TENANT' | 'OWNER';
 
@@ -39,20 +39,15 @@ export async function createInterest(tenantUserId: string, listingId: string) {
     });
   }
 
-  const existingInterest = await prisma.interest.findFirst({
-    where: {
-      tenantProfileId: tenantProfile.id,
-      listingId,
-      status: { in: ['PENDING', 'ACCEPTED'] },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
-
-  if (existingInterest) return existingInterest;
-
+  // Use stored score; default to 0 if missing (enqueueScoresForProfile always writes fallback rows now)
   const storedScore = listing.compatibilityScores[0];
-  const score = storedScore ?? (await computeInlineFallbackScore(tenantProfile, listing));
+  const scoreValue = storedScore?.score ?? 0;
+  const scoreExplanation = storedScore?.explanation ?? '';
 
+  // Attempt the INSERT directly — no pre-check SELECT (TOCTOU eliminated).
+  // The partial unique index (uniq_active_interest) enforces at-most-one
+  // PENDING or ACCEPTED interest per (tenant, listing) pair.
+  // On concurrent inserts, one wins; the P2002 catch below returns the winner.
   try {
     return await prisma.$transaction(async (tx) => {
       const interest = await tx.interest.create({
@@ -60,11 +55,11 @@ export async function createInterest(tenantUserId: string, listingId: string) {
           tenantProfileId: tenantProfile.id,
           listingId,
           status: 'PENDING',
-          scoreAtInterest: score.score,
+          scoreAtInterest: scoreValue,
         },
       });
 
-      if (score.score > 80) {
+      if (scoreValue > 80) {
         await tx.notificationOutbox.create({
           data: {
             userId: listing.ownerId,
@@ -73,8 +68,8 @@ export async function createInterest(tenantUserId: string, listingId: string) {
             payload: {
               tenantName: tenantProfile.user.name,
               listingTitle: listing.title,
-              score: score.score,
-              explanation: score.explanation,
+              score: scoreValue,
+              explanation: scoreExplanation,
             },
           },
         });
@@ -84,6 +79,7 @@ export async function createInterest(tenantUserId: string, listingId: string) {
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      // Concurrent insert hit the partial unique index — fetch and return the winner.
       const concurrentInterest = await prisma.interest.findFirst({
         where: {
           tenantProfileId: tenantProfile.id,
@@ -105,7 +101,7 @@ export async function acceptInterest(ownerUserId: string, interestId: string) {
   const interest = await prisma.interest.findUnique({
     where: { id: interestId },
     include: {
-      listing: { select: { title: true, ownerId: true } },
+      listing: { select: { id: true, title: true, ownerId: true, status: true } },
       tenantProfile: { select: { userId: true } },
     },
   });
@@ -123,6 +119,18 @@ export async function acceptInterest(ownerUserId: string, interestId: string) {
   }
 
   return prisma.$transaction(async (tx) => {
+    // Change 5: Re-verify listing status inside transaction to close the fill-vs-accept race.
+    const listing = await tx.listing.findUnique({
+      where: { id: interest.listing.id },
+      select: { status: true },
+    });
+    if (listing?.status !== 'ACTIVE') {
+      throw Object.assign(
+        new Error('Listing is no longer active — it may have been filled while this request was in flight'),
+        { statusCode: 409 }
+      );
+    }
+
     const transition = await tx.interest.updateMany({
       where: { id: interestId, status: 'PENDING' },
       data: { status: 'ACCEPTED', respondedAt: new Date() },

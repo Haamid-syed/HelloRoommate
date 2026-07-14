@@ -6,6 +6,7 @@ import { Building2, Home, LogOut, MessageSquare, Search, Send, Shield, User, Use
 import type { ReactNode } from 'react';
 import OwnerListings from './listings/mine';
 import CreateListing from './listings/create';
+import ListingDetails from './listings/details';
 import TenantProfilePage from './profile';
 import BrowseListings from './browse';
 import InterestsPage from './interests';
@@ -111,6 +112,7 @@ export default function DashboardPage() {
           <Route path="listings" element={<RoleOnly role="OWNER"><OwnerListings /></RoleOnly>} />
           <Route path="listings/new" element={<RoleOnly role="OWNER"><CreateListing /></RoleOnly>} />
           <Route path="listings/:id/edit" element={<RoleOnly role="OWNER"><CreateListing /></RoleOnly>} />
+          <Route path="listings/:id" element={<RoleOnly role="TENANT"><ListingDetails /></RoleOnly>} />
           <Route path="profile" element={<RoleOnly role="TENANT"><TenantProfilePage /></RoleOnly>} />
           <Route path="browse" element={<RoleOnly role="TENANT"><BrowseListings /></RoleOnly>} />
           <Route path="interests" element={<InterestsPage />} />

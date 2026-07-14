@@ -140,20 +140,33 @@ model ListingPhoto {
 // Scoring
 // ============================================
 
+// ScoreSource describes HOW the numeric score was computed.
+// Currently only RULE_BASED (deterministic fallback scorer).
+// LLM value removed — scores are no longer LLM-generated (explanations are, separately).
+// Add EMBEDDING or ML_MODEL here when embedding-based ranking is introduced.
 enum ScoreSource {
+  RULE_BASED
+}
+
+enum ExplanationSource {
   LLM
-  FALLBACK
+  TEMPLATED
 }
 
 model CompatibilityScore {
-  tenantProfileId String      @map("tenant_profile_id")
-  listingId       String      @map("listing_id")
-  score           Int
-  explanation     String
-  source          ScoreSource
-  inputHash       String      @map("input_hash")
-  model           String?
-  computedAt      DateTime    @default(now()) @map("computed_at")
+  tenantProfileId    String             @map("tenant_profile_id")
+  listingId          String             @map("listing_id")
+  score              Int
+  source             ScoreSource
+  inputHash          String             @map("input_hash")
+  model              String?
+  computedAt         DateTime           @default(now()) @map("computed_at")
+
+  // Explanation — populated lazily on first detail-view or interest event
+  explanation        String?            // nullable: null until first on-demand generation
+  explanationSource  ExplanationSource? @map("explanation_source")
+  explanationVersion String?            @map("explanation_version")
+  explanationAt      DateTime?          @map("explanation_at")
 
   tenantProfile TenantProfile @relation(fields: [tenantProfileId], references: [id], onDelete: Cascade)
   listing       Listing       @relation(fields: [listingId], references: [id], onDelete: Cascade)
@@ -187,8 +200,10 @@ model Interest {
   listing       Listing       @relation(fields: [listingId], references: [id], onDelete: Cascade)
   conversation  Conversation?
 
-  // Partial unique: only one active (pending/accepted) interest per tenant-listing pair
-  @@unique([tenantProfileId, listingId, status], name: "uniq_tenant_listing_status")
+  // Partial unique enforced via raw-SQL migration (uniq_active_interest):
+  // CREATE UNIQUE INDEX uniq_active_interest ON interests (tenant_profile_id, listing_id)
+  // WHERE status IN ('PENDING', 'ACCEPTED');
+  // This allows re-expression after DECLINED/WITHDRAWN.
   @@map("interests")
 }
 

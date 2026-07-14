@@ -8,6 +8,7 @@ import type {
 import { prisma } from '../lib/prisma.js';
 import { enqueueScoresForListing } from './scoring.service.js';
 
+
 const listingInclude = {
   photos: { orderBy: { position: 'asc' as const } },
 } as const;
@@ -123,16 +124,27 @@ export async function updateListing(listingId: string, ownerId: string, input: U
 
 /** Mark an active listing as filled so it no longer appears in tenant searches. */
 export async function fillListing(listingId: string, ownerId: string) {
-  const listing = await getOwnedListing(listingId, ownerId);
-
-  if (listing.status !== 'ACTIVE') {
-    throw Object.assign(new Error('Only active listings can be marked as filled'), { statusCode: 400 });
-  }
+  // Verify ownership first (safe read — subsequent write is atomic on status)
+  await getOwnedListing(listingId, ownerId);
 
   return prisma.$transaction(async (tx) => {
-    const updatedListing = await tx.listing.update({
+    // Conditional UPDATE: only succeeds if the listing is still ACTIVE.
+    // This closes the TOCTOU race where two concurrent requests both read ACTIVE
+    // and then both attempt to UPDATE — only one will match rows.
+    const result = await tx.listing.updateMany({
+      where: { id: listingId, ownerId, status: 'ACTIVE' },
+      data: { status: 'FILLED', updatedAt: new Date() },
+    });
+
+    if (result.count === 0) {
+      throw Object.assign(
+        new Error('Listing is no longer active — it may have already been filled or removed'),
+        { statusCode: 409 }
+      );
+    }
+
+    const updatedListing = await tx.listing.findUniqueOrThrow({
       where: { id: listingId },
-      data: { status: 'FILLED' },
       include: listingInclude,
     });
 
@@ -148,6 +160,7 @@ export async function fillListing(listingId: string, ownerId: string) {
     return updatedListing;
   });
 }
+
 
 /** Return an owner's listings using keyset pagination. */
 export async function getOwnerListings(ownerId: string, params: PaginationInput) {
@@ -195,6 +208,17 @@ export async function searchListings(filters: ListingsFilterInput, tenantProfile
   const fetchLimit =
     filters.sort === 'score' && tenantProfileId ? Math.min(limit * 3, 100) : limit + 1;
 
+  // Fix 1: When a tenant is viewing, filter to ONLY listings that have a score row for them.
+  // enqueueScoresForProfile/Listing only writes rows for in-range candidates (same city, in budget).
+  // This means out-of-range listings (different city, out of budget) are NEVER shown — not even
+  // with a null score — because they have no score row. This is enforced at the DB level, not in
+  // application code, so it cannot be bypassed by a race or a missing enqueue call.
+  //
+  // When no tenantProfileId (owner/admin viewing), all ACTIVE listings are returned unfiltered.
+  if (tenantProfileId) {
+    where.compatibilityScores = { some: { tenantProfileId } };
+  }
+
   const listings = await prisma.listing.findMany({
     where,
     include: {
@@ -215,56 +239,16 @@ export async function searchListings(filters: ListingsFilterInput, tenantProfile
     ...(filters.cursor ? { cursor: { id: filters.cursor }, skip: 1 } : {}),
   });
 
-  let tenantProfile: {
-    id: string;
-    preferredCity: string;
-    preferredAreas: string[];
-    budgetMin: number;
-    budgetMax: number;
-    moveInDate: Date;
-  } | null = null;
-
-  if (tenantProfileId) {
-    tenantProfile = await prisma.tenantProfile.findUnique({
-      where: { id: tenantProfileId },
-      select: {
-        id: true,
-        preferredCity: true,
-        preferredAreas: true,
-        budgetMin: true,
-        budgetMax: true,
-        moveInDate: true,
-      },
-    });
-  }
-
-  const { computeInlineFallbackScore } = await import('./scoring.service.js');
-  const mappedListings = await Promise.all(
-    listings.map(async ({ compatibilityScores, interests, ...listing }) => {
-      const activeInterest = tenantProfileId ? interests?.[0] ?? null : null;
-
-      if (!tenantProfileId || !tenantProfile) {
-        return { ...listing, score: null, interest: null };
-      }
-
-      const storedScore = compatibilityScores?.[0] ?? null;
-      if (storedScore) {
-        return { ...listing, score: storedScore, interest: activeInterest };
-      }
-
-      const inlineScore = await computeInlineFallbackScore(tenantProfile, listing);
-      const { scoringQueue } = await import('../lib/queue.js');
-      scoringQueue
-        .add('score-pair', { tenantProfileId, listingId: listing.id }, {
-          jobId: `score:${tenantProfileId}:${listing.id}`,
-        })
-        .catch(() => {
-          // Queue availability must not affect browse responses.
-        });
-
-      return { ...listing, score: inlineScore, interest: activeInterest };
-    })
-  );
+  // Pure read path — scores always present (guaranteed by where.compatibilityScores filter above).
+  const mappedListings = listings.map(({ compatibilityScores, interests, ...listing }) => {
+    const activeInterest = tenantProfileId ? (interests?.[0] ?? null) : null;
+    const storedScore = compatibilityScores?.[0] ?? null;
+    return {
+      ...listing,
+      score: tenantProfileId ? storedScore : null,
+      interest: activeInterest,
+    };
+  });
 
   if (filters.sort === 'score' && tenantProfileId) {
     mappedListings.sort((a, b) => {
@@ -317,41 +301,9 @@ export async function getListingById(listingId: string, tenantProfileId?: string
 
   const { compatibilityScores, ...listingData } = listing;
 
-  if (!tenantProfileId) {
-    return { ...listingData, score: null };
-  }
-
-  const storedScore = compatibilityScores?.[0] ?? null;
-  if (storedScore) {
-    return { ...listingData, score: storedScore };
-  }
-
-  const profile = await prisma.tenantProfile.findUnique({
-    where: { id: tenantProfileId },
-    select: {
-      id: true,
-      preferredCity: true,
-      preferredAreas: true,
-      budgetMin: true,
-      budgetMax: true,
-      moveInDate: true,
-    },
-  });
-
-  if (!profile) {
-    return { ...listingData, score: null };
-  }
-
-  const { computeInlineFallbackScore } = await import('./scoring.service.js');
-  const inlineScore = await computeInlineFallbackScore(profile, listingData);
-  const { scoringQueue } = await import('../lib/queue.js');
-  scoringQueue
-    .add('score-pair', { tenantProfileId, listingId }, {
-      jobId: `score:${tenantProfileId}:${listingId}`,
-    })
-    .catch(() => {
-      // Queue availability must not affect listing reads.
-    });
-
-  return { ...listingData, score: inlineScore };
+  // Change 1: Pure DB read — no inline fallback computation.
+  // Scores are persisted by enqueueScoresForProfile/Listing. Explanation is fetched
+  // separately by the explanation service (lazy, on-demand via GET /listings/:id route).
+  const storedScore = tenantProfileId ? (compatibilityScores?.[0] ?? null) : null;
+  return { ...listingData, score: storedScore };
 }

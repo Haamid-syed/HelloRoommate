@@ -85,11 +85,15 @@ export interface CompatibilityScore {
   tenantProfileId: string;
   listingId: string;
   score: number;
-  explanation: string;
-  source: ScoreSource;
+  source: ScoreSource;          // Always RULE_BASED
   inputHash: string;
   model: string | null;
   computedAt: string;
+  // Explanation is nullable — generated lazily on first detail-view, not on list browse
+  explanation: string | null;
+  explanationSource: 'LLM' | 'TEMPLATED' | null;
+  explanationVersion: string | null;
+  explanationAt: string | null;
 }
 
 // ============================================
@@ -194,7 +198,7 @@ export interface WsEvents {
   'message:ack': { clientMsgId: string; serverId: string; createdAt: string };
   'interest:accepted': { interestId: string; conversationId: string };
   'interest:declined': { interestId: string };
-  'score:updated': { listingId: string; score: number; explanation: string; source: ScoreSource };
+  'score:updated': { listingId: string; score: number; source: ScoreSource };
   'typing:indicator': { conversationId: string; userId: string; isTyping: boolean };
 }
 

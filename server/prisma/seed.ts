@@ -400,7 +400,7 @@ async function main() {
       tenantProfileId: p1.id,
       listingId: l1.id,
       score: 88,
-      source: 'FALLBACK',
+      source: 'RULE_BASED',
       explanation: 'Budget fits Bandra West Listing, location is a priority area, available early.',
       inputHash: computeInputHash(p1, l1)
     }
@@ -412,7 +412,7 @@ async function main() {
       tenantProfileId: p2.id,
       listingId: l2.id,
       score: 92,
-      source: 'LLM',
+      source: 'RULE_BASED',
       explanation: 'Exceptional match! Budget matches, Bandra West is a priority area, and availability meets move-in parameters.',
       inputHash: computeInputHash(p2, l2)
     }
@@ -424,7 +424,7 @@ async function main() {
       tenantProfileId: p3.id,
       listingId: l3.id,
       score: 85,
-      source: 'LLM',
+      source: 'RULE_BASED',
       explanation: 'Good budget fit, Khar matches preferred areas, available early.',
       inputHash: computeInputHash(p3, l3)
     }
@@ -436,7 +436,7 @@ async function main() {
       tenantProfileId: p4.id,
       listingId: l5.id,
       score: 95,
-      source: 'LLM',
+      source: 'RULE_BASED',
       explanation: 'budget aligns perfectly, Powai location is preferred.',
       inputHash: computeInputHash(p4, l5)
     }
@@ -448,7 +448,7 @@ async function main() {
       tenantProfileId: p7.id,
       listingId: l7.id,
       score: 78,
-      source: 'FALLBACK',
+      source: 'RULE_BASED',
       explanation: 'Budget is close, Kurla is preferred area, available before move-in date.',
       inputHash: computeInputHash(p7, l7)
     }

@@ -1,6 +1,13 @@
+/**
+ * ScoringProvider — interface for deterministic rule-based scoring.
+ *
+ * NOTE: The LLM (OpenRouter) is no longer a ScoringProvider.
+ * Numeric scores always come from the FallbackScorer (deterministic).
+ * LLM-generated content is handled by the ExplanationService (lazy, cached).
+ */
 export interface ScoringResult {
   score: number;
-  explanation: string;
+  explanation: string; // Sub-score breakdown string from the rule-based scorer
 }
 
 export interface ScoringProvider {

@@ -11,6 +11,7 @@ import {
 import { prisma } from '../../lib/prisma.js';
 import { authenticate, requireRole } from '../../middleware/auth.js';
 import { validate } from '../../middleware/validate.js';
+import { getOrGenerateExplanation } from '../../services/explanation.service.js';
 import * as listingService from '../../services/listing.service.js';
 
 const router = Router();
@@ -105,6 +106,7 @@ router.get(
   }
 );
 
+// List view: returns score + source label only (no explanation — Change 2)
 router.get(
   '/',
   authenticate,
@@ -122,10 +124,73 @@ router.get(
   }
 );
 
+// Detail view: fast read path (Change 2)
 router.get('/:id', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const listing = await listingService.getListingById(listingIdFrom(req), await getTenantProfileId(req));
+    const listingId = listingIdFrom(req);
+    const tenantProfileId = await getTenantProfileId(req);
+    const listing = await listingService.getListingById(listingId, tenantProfileId);
     res.json({ success: true, data: { listing } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Explanation endpoint: lazy, on-demand generation (Change 2)
+router.get('/:id/explanation', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const listingId = listingIdFrom(req);
+    const tenantProfileId = await getTenantProfileId(req);
+
+    if (!tenantProfileId) {
+      res.status(400).json({ success: false, error: { message: 'Only tenants can view compatibility explanations' } });
+      return;
+    }
+
+    const listing = await listingService.getListingById(listingId, tenantProfileId);
+    if (!listing.score) {
+      res.status(404).json({ success: false, error: { message: 'No compatibility score exists for this listing' } });
+      return;
+    }
+
+    // Fetch the full profile and listing data needed for explanation generation
+    const [profile, fullListing] = await Promise.all([
+      prisma.tenantProfile.findUnique({
+        where: { id: tenantProfileId },
+        select: {
+          id: true,
+          preferredCity: true,
+          preferredAreas: true,
+          budgetMin: true,
+          budgetMax: true,
+          moveInDate: true,
+        },
+      }),
+      prisma.listing.findUnique({
+        where: { id: listingId },
+        select: { id: true, city: true, area: true, rent: true, availableFrom: true, roomType: true, furnishing: true },
+      }),
+    ]);
+
+    if (!profile || !fullListing) {
+      res.status(404).json({ success: false, error: { message: 'Tenant profile or listing not found' } });
+      return;
+    }
+
+    const explanationData = await getOrGenerateExplanation(
+      tenantProfileId,
+      listingId,
+      { ...profile, moveInDate: profile.moveInDate },
+      fullListing
+    );
+
+    res.json({
+      success: true,
+      data: {
+        score: listing.score.score,
+        ...explanationData,
+      },
+    });
   } catch (err) {
     next(err);
   }

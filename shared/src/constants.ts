@@ -53,9 +53,10 @@ export const NOTIFICATION_STATUS = {
 
 export type NotificationStatus = (typeof NOTIFICATION_STATUS)[keyof typeof NOTIFICATION_STATUS];
 
+// ScoreSource: how the numeric score was computed.
+// LLM removed — scores are rule-based/deterministic; LLM is only used for explanations.
 export const SCORE_SOURCE = {
-  LLM: 'LLM',
-  FALLBACK: 'FALLBACK',
+  RULE_BASED: 'RULE_BASED',
 } as const;
 
 export type ScoreSource = (typeof SCORE_SOURCE)[keyof typeof SCORE_SOURCE];

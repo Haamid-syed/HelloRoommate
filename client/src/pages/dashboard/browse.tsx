@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { isAxiosError } from 'axios';
 import { format } from 'date-fns';
 import { Building2, CheckCircle2, ChevronDown, Clock, MapPin, Search, Send, SlidersHorizontal, UserRound, Wallet, XCircle } from 'lucide-react';
@@ -93,7 +94,7 @@ function ListingResultCard({ listing }: { listing: Listing }) {
               {score}
             </span>
             <span className="rounded-full bg-card/90 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground shadow-sm backdrop-blur">
-              {listing.score?.source === 'LLM' ? 'AI' : 'Est.'}
+              Est.
             </span>
           </div>
         )}
@@ -146,25 +147,14 @@ function ListingResultCard({ listing }: { listing: Listing }) {
           )}
         </div>
 
-        <details className="group mt-5 border-t border-border pt-4">
-          <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-semibold text-primary hover:text-primary/80">
-            View details
-            <ChevronDown className="h-4 w-4 transition group-open:rotate-180" />
-          </summary>
-          <div className="pt-3 text-sm leading-6 text-muted-foreground">
-            {listing.description || 'The owner has not added a description yet.'}
-            {listing.score?.explanation && (
-              <p className={`mt-3 rounded-lg p-3 text-sm ${
-                listing.score.source === 'LLM'
-                  ? 'border border-primary/20 bg-primary/5 text-primary'
-                  : 'bg-muted text-muted-foreground'
-              }`}>
-                {listing.score.source === 'LLM' ? '🤖 AI Match: ' : '📊 Estimated: '}
-                {listing.score.explanation}
-              </p>
-            )}
-          </div>
-        </details>
+        <div className="mt-5 border-t border-border pt-4">
+          <Link
+            to={`/dashboard/listings/${listing.id}`}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-input bg-card px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-secondary"
+          >
+            View compatibility & details
+          </Link>
+        </div>
       </div>
     </article>
   );
