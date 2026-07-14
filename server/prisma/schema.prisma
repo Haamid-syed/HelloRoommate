@@ -1,0 +1,269 @@
+// Prisma schema for Rent & Flatmate Finder
+// Full schema from system design §5.2
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// Users & Auth
+// ============================================
+
+enum Role {
+  TENANT
+  OWNER
+  ADMIN
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  passwordHash String   @map("password_hash")
+  role         Role
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  tenantProfile  TenantProfile?
+  listings       Listing[]
+  refreshTokens  RefreshToken[]
+  sentMessages   Message[]           @relation("sender")
+  notifications  NotificationOutbox[]
+  auditLogs      AuditLog[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @map("token_hash")
+  family    String    @default(uuid()) // For rotation reuse detection
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("refresh_tokens")
+}
+
+// ============================================
+// Domain Models
+// ============================================
+
+model TenantProfile {
+  id             String   @id @default(uuid())
+  userId         String   @unique @map("user_id")
+  preferredCity  String   @map("preferred_city")
+  preferredAreas String[] @map("preferred_areas")
+  budgetMin      Int      @map("budget_min")
+  budgetMax      Int      @map("budget_max")
+  moveInDate     DateTime @map("move_in_date")
+  preferences    Json     @default("{}")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  compatibilityScores CompatibilityScore[]
+  interests          Interest[]
+
+  @@map("tenant_profiles")
+}
+
+enum ListingStatus {
+  ACTIVE
+  FILLED
+  REMOVED
+}
+
+enum RoomType {
+  PRIVATE
+  SHARED
+  STUDIO
+  ONE_BHK
+  TWO_BHK
+}
+
+enum FurnishingType {
+  UNFURNISHED
+  SEMI_FURNISHED
+  FURNISHED
+}
+
+model Listing {
+  id            String         @id @default(uuid())
+  ownerId       String         @map("owner_id")
+  title         String
+  city          String
+  area          String
+  lat           Float?
+  lng           Float?
+  rent          Int
+  availableFrom DateTime       @map("available_from")
+  roomType      RoomType       @map("room_type")
+  furnishing    FurnishingType
+  description   String         @default("")
+  status        ListingStatus  @default(ACTIVE)
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  owner               User                 @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  photos              ListingPhoto[]
+  compatibilityScores CompatibilityScore[]
+  interests           Interest[]
+
+  @@index([city, status, rent, availableFrom], name: "idx_listings_search")
+  @@map("listings")
+}
+
+model ListingPhoto {
+  id        String @id @default(uuid())
+  listingId String @map("listing_id")
+  url       String
+  position  Int
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@map("listing_photos")
+}
+
+// ============================================
+// Scoring
+// ============================================
+
+enum ScoreSource {
+  LLM
+  FALLBACK
+}
+
+model CompatibilityScore {
+  tenantProfileId String      @map("tenant_profile_id")
+  listingId       String      @map("listing_id")
+  score           Int
+  explanation     String
+  source          ScoreSource
+  inputHash       String      @map("input_hash")
+  model           String?
+  computedAt      DateTime    @default(now()) @map("computed_at")
+
+  tenantProfile TenantProfile @relation(fields: [tenantProfileId], references: [id], onDelete: Cascade)
+  listing       Listing       @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@id([tenantProfileId, listingId])
+  @@index([tenantProfileId, score(sort: Desc)], name: "idx_scores_rank")
+  @@map("compatibility_scores")
+}
+
+// ============================================
+// Interest & Chat
+// ============================================
+
+enum InterestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  WITHDRAWN
+}
+
+model Interest {
+  id              String         @id @default(uuid())
+  tenantProfileId String         @map("tenant_profile_id")
+  listingId       String         @map("listing_id")
+  status          InterestStatus @default(PENDING)
+  scoreAtInterest Int?           @map("score_at_interest")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  respondedAt     DateTime?      @map("responded_at")
+
+  tenantProfile TenantProfile @relation(fields: [tenantProfileId], references: [id], onDelete: Cascade)
+  listing       Listing       @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  conversation  Conversation?
+
+  // Partial unique: only one active (pending/accepted) interest per tenant-listing pair
+  @@unique([tenantProfileId, listingId, status], name: "uniq_tenant_listing_status")
+  @@map("interests")
+}
+
+model Conversation {
+  id         String   @id @default(uuid())
+  interestId String   @unique @map("interest_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  interest Interest  @relation(fields: [interestId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@map("conversations")
+}
+
+model Message {
+  id             String    @id @default(uuid())
+  conversationId String    @map("conversation_id")
+  senderId       String    @map("sender_id")
+  body           String
+  clientMsgId    String    @map("client_msg_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  readAt         DateTime? @map("read_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation("sender", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, clientMsgId], name: "uniq_conv_client_msg")
+  @@index([conversationId, createdAt(sort: Desc)], name: "idx_messages_history")
+  @@map("messages")
+}
+
+// ============================================
+// Notifications (Outbox Pattern)
+// ============================================
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model NotificationOutbox {
+  id        String             @id @default(uuid())
+  userId    String             @map("user_id")
+  type      String
+  payload   Json
+  dedupKey  String             @unique @map("dedup_key")
+  status    NotificationStatus @default(PENDING)
+  attempts  Int                @default(0)
+  lastError String?            @map("last_error")
+  createdAt DateTime           @default(now()) @map("created_at")
+  sentAt    DateTime?          @map("sent_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@map("notifications_outbox")
+}
+
+// ============================================
+// Audit Logs
+// ============================================
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String   @map("actor_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  meta       Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  actor User @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([entityType, entityId])
+  @@index([createdAt(sort: Desc)])
+  @@map("audit_logs")
+}

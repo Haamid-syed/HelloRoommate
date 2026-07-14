@@ -1,10 +1,7 @@
 # =============================================
 # Project Reference Files (not for repo)
 # =============================================
-project_requirement_and_guidelines.txt
-rent-flatmate-finder-system-design.md
-context.md
-progress.md
+**/project_details/*
 
 # =============================================
 # Dependencies
