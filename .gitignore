@@ -1,0 +1,85 @@
+# =============================================
+# Project Reference Files (not for repo)
+# =============================================
+project_requirement_and_guidelines.txt
+rent-flatmate-finder-system-design.md
+context.md
+progress.md
+
+# =============================================
+# Dependencies
+# =============================================
+node_modules/
+.pnp
+.pnp.js
+
+# =============================================
+# Build / Output
+# =============================================
+dist/
+build/
+*.tsbuildinfo
+
+# =============================================
+# Environment Variables
+# =============================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+# .env.example is NOT ignored (committed as reference)
+
+# =============================================
+# IDE / Editor
+# =============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# =============================================
+# Logs
+# =============================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =============================================
+# Testing / Coverage
+# =============================================
+coverage/
+.nyc_output/
+
+# =============================================
+# Prisma
+# =============================================
+# Don't ignore prisma/ directory (schema + migrations are committed)
+# But ignore generated client (it's regenerated on install)
+
+# =============================================
+# Docker
+# =============================================
+# Don't ignore docker-compose.yml or Dockerfiles
+# But ignore local docker data volumes
+docker-data/
+
+# =============================================
+# OS Files
+# =============================================
+.DS_Store
+*.pem
+
+# =============================================
+# Misc
+# =============================================
+*.tgz
+.cache/
+.temp/
+.tmp/
