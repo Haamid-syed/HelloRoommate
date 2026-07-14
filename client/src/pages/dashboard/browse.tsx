@@ -25,7 +25,7 @@ const initialFilterForm: FilterForm = {
   maxRent: '',
   roomType: '',
   furnishing: '',
-  sort: 'recency',
+  sort: 'score',
 };
 
 const currency = new Intl.NumberFormat('en-IN', {
@@ -55,9 +55,17 @@ function ListingResultCard({ listing }: { listing: Listing }) {
           {listing.roomType.replace('_', ' ')}
         </span>
         {score !== undefined && (
-          <span className={`absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full border text-sm font-bold shadow-sm ${scoreColor(score)}`} title="Compatibility score">
-            {score}
-          </span>
+          <div className="absolute right-3 top-3 flex flex-col items-center gap-0.5">
+            <span
+              className={`flex h-10 w-10 items-center justify-center rounded-full border text-sm font-bold shadow-sm ${scoreColor(score)}`}
+              title={`Compatibility score: ${score}/100`}
+            >
+              {score}
+            </span>
+            <span className="rounded-full bg-card/90 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground shadow-sm backdrop-blur">
+              {listing.score?.source === 'LLM' ? 'AI' : 'Est.'}
+            </span>
+          </div>
         )}
       </div>
 
@@ -83,7 +91,16 @@ function ListingResultCard({ listing }: { listing: Listing }) {
           </summary>
           <div className="pt-3 text-sm leading-6 text-muted-foreground">
             {listing.description || 'The owner has not added a description yet.'}
-            {listing.score?.explanation && <p className="mt-3 rounded-lg bg-primary/5 p-3 text-primary">Match note: {listing.score.explanation}</p>}
+            {listing.score?.explanation && (
+              <p className={`mt-3 rounded-lg p-3 text-sm ${
+                listing.score.source === 'LLM'
+                  ? 'border border-primary/20 bg-primary/5 text-primary'
+                  : 'bg-muted text-muted-foreground'
+              }`}>
+                {listing.score.source === 'LLM' ? '🤖 AI Match: ' : '📊 Estimated: '}
+                {listing.score.explanation}
+              </p>
+            )}
           </div>
         </details>
       </div>
@@ -93,7 +110,7 @@ function ListingResultCard({ listing }: { listing: Listing }) {
 
 export default function BrowseListings() {
   const [draft, setDraft] = useState<FilterForm>(initialFilterForm);
-  const [filters, setFilters] = useState<BrowseFilters>({ sort: 'recency', limit: 20 });
+  const [filters, setFilters] = useState<BrowseFilters>({ sort: 'score', limit: 20 });
 
   const listingsQuery = useInfiniteQuery({
     queryKey: ['listings', filters],
@@ -125,7 +142,7 @@ export default function BrowseListings() {
 
   const resetFilters = () => {
     setDraft(initialFilterForm);
-    setFilters({ sort: 'recency', limit: 20 });
+    setFilters({ sort: 'score', limit: 20 });
   };
 
   return (

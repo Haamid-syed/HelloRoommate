@@ -6,6 +6,7 @@ import type {
   UpdateListingInput,
 } from 'shared';
 import { prisma } from '../lib/prisma.js';
+import { enqueueScoresForListing } from './scoring.service.js';
 
 const listingInclude = {
   photos: { orderBy: { position: 'asc' as const } },
@@ -27,7 +28,7 @@ async function getOwnedListing(listingId: string, ownerId: string) {
 
 /** Create a listing and its optional placeholder photo records. */
 export async function createListing(ownerId: string, input: CreateListingInput) {
-  return prisma.listing.create({
+  const listing = await prisma.listing.create({
     data: {
       ownerId,
       title: input.title,
@@ -46,6 +47,12 @@ export async function createListing(ownerId: string, input: CreateListingInput) 
     },
     include: listingInclude,
   });
+
+  enqueueScoresForListing(listing.id).catch((err) => {
+    console.error('Failed to enqueue scoring for new listing:', err);
+  });
+
+  return listing;
 }
 
 /** Update only supplied listing fields and replace photos when explicitly requested. */
@@ -65,7 +72,7 @@ export async function updateListing(listingId: string, ownerId: string, input: U
   if (input.furnishing !== undefined) data.furnishing = input.furnishing;
   if (input.description !== undefined) data.description = input.description;
 
-  return prisma.$transaction(async (tx) => {
+  const updated = await prisma.$transaction(async (tx) => {
     if (input.photoUrls !== undefined) {
       await tx.listingPhoto.deleteMany({ where: { listingId } });
 
@@ -82,6 +89,12 @@ export async function updateListing(listingId: string, ownerId: string, input: U
       include: listingInclude,
     });
   });
+
+  enqueueScoresForListing(updated.id).catch((err) => {
+    console.error('Failed to enqueue scoring for updated listing:', err);
+  });
+
+  return updated;
 }
 
 /** Mark an active listing as filled so it no longer appears in tenant searches. */
@@ -142,34 +155,102 @@ export async function searchListings(filters: ListingsFilterInput, tenantProfile
   if (filters.availableFrom) where.availableFrom = { gte: new Date(filters.availableFrom) };
 
   const limit = filters.limit ?? 20;
+  const fetchLimit =
+    filters.sort === 'score' && tenantProfileId ? Math.min(limit * 3, 100) : limit + 1;
+
   const listings = await prisma.listing.findMany({
     where,
     include: {
       photos: { orderBy: { position: 'asc' } },
       owner: { select: { id: true, name: true, email: true } },
-      compatibilityScores: {
-        where: { tenantProfileId: tenantProfileId ?? '' },
-        take: 1,
-      },
+      compatibilityScores: tenantProfileId
+        ? { where: { tenantProfileId }, take: 1 }
+        : undefined,
     },
     orderBy:
       filters.sort === 'rent'
         ? { rent: 'asc' }
         : { createdAt: 'desc' },
-    take: limit + 1,
+    take: fetchLimit + 1,
     ...(filters.cursor ? { cursor: { id: filters.cursor }, skip: 1 } : {}),
   });
 
-  const hasMore = listings.length > limit;
-  if (hasMore) listings.pop();
+  let tenantProfile: {
+    id: string;
+    preferredCity: string;
+    preferredAreas: string[];
+    budgetMin: number;
+    budgetMax: number;
+    moveInDate: Date;
+  } | null = null;
+
+  if (tenantProfileId) {
+    tenantProfile = await prisma.tenantProfile.findUnique({
+      where: { id: tenantProfileId },
+      select: {
+        id: true,
+        preferredCity: true,
+        preferredAreas: true,
+        budgetMin: true,
+        budgetMax: true,
+        moveInDate: true,
+      },
+    });
+  }
+
+  const { computeInlineFallbackScore } = await import('./scoring.service.js');
+  const mappedListings = await Promise.all(
+    listings.map(async ({ compatibilityScores, ...listing }) => {
+      if (!tenantProfileId || !tenantProfile) {
+        return { ...listing, score: null };
+      }
+
+      const storedScore = compatibilityScores?.[0] ?? null;
+      if (storedScore) {
+        return { ...listing, score: storedScore };
+      }
+
+      const inlineScore = await computeInlineFallbackScore(tenantProfile, listing);
+      const { scoringQueue } = await import('../lib/queue.js');
+      scoringQueue
+        .add('score-pair', { tenantProfileId, listingId: listing.id }, {
+          jobId: `score:${tenantProfileId}:${listing.id}`,
+        })
+        .catch(() => {
+          // Queue availability must not affect browse responses.
+        });
+
+      return { ...listing, score: inlineScore };
+    })
+  );
+
+  if (filters.sort === 'score' && tenantProfileId) {
+    mappedListings.sort((a, b) => {
+      const scoreA = a.score?.score ?? -1;
+      const scoreB = b.score?.score ?? -1;
+      return scoreB - scoreA;
+    });
+
+    const paginated = mappedListings.slice(0, limit + 1);
+    const hasMore = paginated.length > limit;
+    if (hasMore) paginated.pop();
+
+    return {
+      listings: paginated,
+      meta: {
+        cursor: paginated.length > 0 ? paginated[paginated.length - 1]!.id : null,
+        hasMore,
+      },
+    };
+  }
+
+  const hasMore = mappedListings.length > limit;
+  if (hasMore) mappedListings.pop();
 
   return {
-    listings: listings.map(({ compatibilityScores, ...listing }) => ({
-      ...listing,
-      score: tenantProfileId ? compatibilityScores[0] ?? null : null,
-    })),
+    listings: mappedListings,
     meta: {
-      cursor: listings.length > 0 ? listings[listings.length - 1]!.id : null,
+      cursor: mappedListings.length > 0 ? mappedListings[mappedListings.length - 1]!.id : null,
       hasMore,
     },
   };
@@ -182,10 +263,9 @@ export async function getListingById(listingId: string, tenantProfileId?: string
     include: {
       photos: { orderBy: { position: 'asc' } },
       owner: { select: { id: true, name: true, email: true } },
-      compatibilityScores: {
-        where: { tenantProfileId: tenantProfileId ?? '' },
-        take: 1,
-      },
+      compatibilityScores: tenantProfileId
+        ? { where: { tenantProfileId }, take: 1 }
+        : undefined,
     },
   });
 
@@ -194,8 +274,42 @@ export async function getListingById(listingId: string, tenantProfileId?: string
   }
 
   const { compatibilityScores, ...listingData } = listing;
-  return {
-    ...listingData,
-    score: tenantProfileId ? compatibilityScores[0] ?? null : null,
-  };
+
+  if (!tenantProfileId) {
+    return { ...listingData, score: null };
+  }
+
+  const storedScore = compatibilityScores?.[0] ?? null;
+  if (storedScore) {
+    return { ...listingData, score: storedScore };
+  }
+
+  const profile = await prisma.tenantProfile.findUnique({
+    where: { id: tenantProfileId },
+    select: {
+      id: true,
+      preferredCity: true,
+      preferredAreas: true,
+      budgetMin: true,
+      budgetMax: true,
+      moveInDate: true,
+    },
+  });
+
+  if (!profile) {
+    return { ...listingData, score: null };
+  }
+
+  const { computeInlineFallbackScore } = await import('./scoring.service.js');
+  const inlineScore = await computeInlineFallbackScore(profile, listingData);
+  const { scoringQueue } = await import('../lib/queue.js');
+  scoringQueue
+    .add('score-pair', { tenantProfileId, listingId }, {
+      jobId: `score:${tenantProfileId}:${listingId}`,
+    })
+    .catch(() => {
+      // Queue availability must not affect listing reads.
+    });
+
+  return { ...listingData, score: inlineScore };
 }

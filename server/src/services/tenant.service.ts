@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import type { UpsertTenantProfileInput } from 'shared';
 import { prisma } from '../lib/prisma.js';
+import { enqueueScoresForProfile } from './scoring.service.js';
 
 /** Create or update the authenticated tenant's matching preferences. */
 export async function upsertTenantProfile(userId: string, input: UpsertTenantProfileInput) {
@@ -19,7 +20,7 @@ export async function upsertTenantProfile(userId: string, input: UpsertTenantPro
 
   const preferences = (input.preferences ?? {}) as Prisma.InputJsonValue;
 
-  return prisma.tenantProfile.upsert({
+  const profile = await prisma.tenantProfile.upsert({
     where: { userId },
     create: {
       userId,
@@ -39,6 +40,12 @@ export async function upsertTenantProfile(userId: string, input: UpsertTenantPro
       preferences,
     },
   });
+
+  enqueueScoresForProfile(profile.id).catch((err) => {
+    console.error('Failed to enqueue scoring for profile:', err);
+  });
+
+  return profile;
 }
 
 /** A missing profile is valid until a tenant has set up their search preferences. */

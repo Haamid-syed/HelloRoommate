@@ -1,12 +1,14 @@
 import http from 'http';
 import { createApp } from './app.js';
 import { env } from './config/env.js';
+import { startScoringWorker } from './jobs/scoring.worker.js';
 import { logger } from './lib/logger.js';
 import { prisma } from './lib/prisma.js';
 
 async function main() {
   const app = createApp();
   const server = http.createServer(app);
+  const scoringWorker = startScoringWorker();
 
   // Socket.IO will be attached here in Phase 4
   // const io = setupSocketIO(server);
@@ -18,6 +20,9 @@ async function main() {
     server.close(() => {
       logger.info('HTTP server closed');
     });
+
+    await scoringWorker.close();
+    logger.info('Scoring worker stopped');
 
     await prisma.$disconnect();
     logger.info('Database disconnected');
