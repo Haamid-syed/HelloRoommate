@@ -11,6 +11,17 @@
 
 ---
 
+## Live Demo
+
+- **Application (Frontend)**: [https://hello-roommate.vercel.app](https://hello-roommate.vercel.app)
+- **API Backend**: [https://roomfinder-production.up.railway.app](https://roomfinder-production.up.railway.app)
+- **Demo Credentials** (all passwords are `password123`):
+  - **Admin**: `admin@roomfinder.test`
+  - **Owner**: `owner.aarav@roomfinder.test`
+  - **Tenant**: `tenant.1@roomfinder.test`
+
+---
+
 ## Table of Contents
 
 - [Overview](#overview)
