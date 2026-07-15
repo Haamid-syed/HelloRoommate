@@ -206,6 +206,8 @@ export default function BrowseListings() {
   const [filters, setFilters] = useState<BrowseFilters>({ sort: 'score', limit: 20 });
   const [filtersOpen, setFiltersOpen] = useState(true);
 
+  const { isAuthenticated } = useAuthStore();
+
   // Check if the tenant has a profile set up (so we can show a banner if not)
   const profileQuery = useQuery({
     queryKey: ['my-profile'],
@@ -213,9 +215,10 @@ export default function BrowseListings() {
       const response = await api.get<ApiResponse<{ profile: unknown }>>('/tenants/me/profile');
       return response.data.data?.profile ?? null;
     },
+    enabled: isAuthenticated,
     retry: false,
   });
-  const hasProfile = !!profileQuery.data;
+  const hasProfile = isAuthenticated ? !!profileQuery.data : true;
 
   const listingsQuery = useInfiniteQuery({
     queryKey: ['listings', filters],

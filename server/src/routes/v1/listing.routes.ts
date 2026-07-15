@@ -11,7 +11,7 @@ import {
 } from 'shared';
 import { prisma } from '../../lib/prisma.js';
 import { uploadToCloudinary } from '../../lib/cloudinary.js';
-import { authenticate, requireRole } from '../../middleware/auth.js';
+import { authenticate, optionalAuthenticate, requireRole } from '../../middleware/auth.js';
 import { validate } from '../../middleware/validate.js';
 import { getOrGenerateExplanation } from '../../services/explanation.service.js';
 import * as listingService from '../../services/listing.service.js';
@@ -142,7 +142,7 @@ router.get(
 // List view: returns score + source label only (no explanation — Change 2)
 router.get(
   '/',
-  authenticate,
+  optionalAuthenticate,
   validate(listingsFilterSchema, 'query'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -158,7 +158,7 @@ router.get(
 );
 
 // Detail view: fast read path (Change 2)
-router.get('/:id', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/:id', optionalAuthenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const listingId = listingIdFrom(req);
     const tenantProfileId = await getTenantProfileId(req);

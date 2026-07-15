@@ -65,3 +65,27 @@ export function requireRole(...roles: Role[]) {
     next();
   };
 }
+
+/**
+ * JWT optional authentication middleware.
+ * If token is present and valid, sets req.user.
+ * Otherwise, lets the request pass (req.user remains undefined).
+ */
+export function optionalAuthenticate(req: Request, res: Response, next: NextFunction): void {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader?.startsWith('Bearer ')) {
+    next();
+    return;
+  }
+
+  const token = authHeader.slice(7);
+
+  try {
+    const payload = verifyAccessToken(token);
+    req.user = payload;
+    next();
+  } catch {
+    next();
+  }
+}
