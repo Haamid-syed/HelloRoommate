@@ -88,6 +88,7 @@ export default function ChatPage() {
   const activeConvIdRef = useRef<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastNewestMsgIdRef = useRef<string | null>(null);
 
   const conversationsQuery = useQuery({
     queryKey: ['conversations'],
@@ -130,8 +131,15 @@ export default function ChatPage() {
   }, [messagesQuery.data]);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length]);
+    if (messages.length === 0) return;
+    const newestMsg = messages[messages.length - 1];
+    const newestMsgId = newestMsg?.id || newestMsg?.clientMsgId;
+
+    if (lastNewestMsgIdRef.current !== newestMsgId) {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      lastNewestMsgIdRef.current = newestMsgId ?? null;
+    }
+  }, [messages]);
 
   useEffect(() => {
     if (!token) return;
@@ -316,7 +324,7 @@ export default function ChatPage() {
               </header>
 
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-2.5" style={{ backgroundColor: BG }}>
+              <div className="flex-1 overflow-y-auto p-4 flex flex-col space-y-2.5" style={{ backgroundColor: BG }}>
                 {messagesQuery.hasNextPage && (
                   <button
                     type="button"

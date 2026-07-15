@@ -148,10 +148,6 @@ enum ScoreSource {
   RULE_BASED
 }
 
-enum ExplanationSource {
-  LLM
-  TEMPLATED
-}
 
 model CompatibilityScore {
   tenantProfileId    String             @map("tenant_profile_id")
@@ -164,7 +160,7 @@ model CompatibilityScore {
 
   // Explanation — populated lazily on first detail-view or interest event
   explanation        String?            // nullable: null until first on-demand generation
-  explanationSource  ExplanationSource? @map("explanation_source")
+  explanationSource  String?            @map("explanation_source")
   explanationVersion String?            @map("explanation_version")
   explanationAt      DateTime?          @map("explanation_at")
 

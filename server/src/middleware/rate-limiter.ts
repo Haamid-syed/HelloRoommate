@@ -81,12 +81,12 @@ export function rateLimiter({ windowMs, max, routeGroup }: RateLimitOptions) {
 // Limiters must be instantiated once and reused
 export const authLimiter = rateLimiter({
   windowMs: 60 * 1000, // 1 minute
-  max: 5,              // Max 5 attempts
+  max: 30,             // 30 auth attempts/min (was 5 — too strict for dev)
   routeGroup: 'auth',
 });
 
 export const apiLimiter = rateLimiter({
   windowMs: 60 * 1000, // 1 minute
-  max: 100,            // Max 100 queries
+  max: 300,            // 300 req/min (was 100)
   routeGroup: 'api',
 });

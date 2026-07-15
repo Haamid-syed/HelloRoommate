@@ -122,13 +122,13 @@ Renting a room involves more than just price. Finding someone whose expectations
 | Layer | Technology | Justification |
 |---|---|---|
 | **Frontend** | React 19, Vite, TanStack Query | Query caching, optimistic UI for chat, fast DX |
-| **Styling** | Tailwind CSS v3, shadcn/ui | Polished component library with consistent design tokens |
+| **Styling** | Vanilla CSS with oklch design tokens | Custom dark-theme styling using modern CSS features & oklch colors. No Tailwind or third-party framework dependencies. |
 | **Backend** | Node.js, TypeScript, Express 5 | First-class WebSocket ecosystem, shared types with frontend |
 | **Database** | PostgreSQL, Prisma ORM | Relational data with strong constraints, type-safe queries |
 | **Cache/Queue** | Redis, BullMQ | Single dependency for caching, pub/sub, and job queue |
 | **Real-Time** | Socket.IO + Redis Adapter | Rooms, auto-reconnect, fallback transports, multi-node ready |
 | **LLM** | OpenRouter API | Provider-agnostic interface; free model tier available |
-| **Email** | Provider-agnostic interface | Console (dev), Resend/Brevo/Mailgun (prod) — swappable |
+| **Email** | Provider-agnostic interface | Nodemailer/Gmail SMTP (recommended), Resend (prod), Console (dev) |
 | **Photos** | Cloudinary | Upload, resize, CDN delivery — never store binaries in DB |
 | **Auth** | JWT (access + refresh), Argon2id | Stateless API scaling, industry-standard password hashing |
 
@@ -457,7 +457,9 @@ See [`.env.example`](.env.example) for all variables. Key ones:
 | `JWT_REFRESH_SECRET` | Secret for signing refresh tokens | — |
 | `OPENROUTER_API_KEY` | OpenRouter API key for LLM scoring | — |
 | `OPENROUTER_MODEL` | Model to use for scoring | `meta-llama/llama-3.3-70b-instruct:free` |
-| `EMAIL_PROVIDER` | `console` (dev) or `resend` (prod) | `console` |
+| `EMAIL_PROVIDER` | `console` (dev), `gmail` (SMTP), or `resend` (prod) | `console` |
+| `GMAIL_USER` | Gmail username/email | — |
+| `GMAIL_APP_PASSWORD` | Google account App Password | — |
 | `PORT` | Server port | `5001` |
 | `CORS_ORIGIN` | Allowed frontend origin | `http://localhost:5173` |
 
@@ -473,8 +475,8 @@ npm run seed
 
 ### Rate Limiting Configurations
 We enforce strict Redis-backed sliding-window rate limiting to prevent API abuse:
-- **Auth Routes** (`/api/v1/auth/login`, `/api/v1/auth/register`, `/api/v1/auth/refresh`): Max 5 requests per minute.
-- **General API Routes** (`/api/v1/*`): Max 100 requests per minute.
+- **Auth Routes** (`/api/v1/auth/login`, `/api/v1/auth/register`, `/api/v1/auth/refresh`): Max 30 requests per minute.
+- **General API Routes** (`/api/v1/*`): Max 300 requests per minute.
 
 If Redis goes down, the rate limiter **fails open** to avoid blocking application traffic.
 
@@ -483,11 +485,11 @@ If Redis goes down, the rate limiter **fails open** to avoid blocking applicatio
 #### 1. Rate Limiter Verification (Auth & API)
 To test the sliding-window rate limits locally:
 ```bash
-# General API rate limiting (expect requests 101-105 to fail with 429)
-for i in {1..105}; do curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5001/api/v1/listings; done
+# General API rate limiting (expect requests 301-305 to fail with 429)
+for i in {1..305}; do curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5001/api/v1/listings; done
 
-# Auth endpoint rate limiting (expect requests 6-7 to fail with 429)
-for i in {1..7}; do curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:5001/api/v1/auth/login; done
+# Auth endpoint rate limiting (expect requests 31-35 to fail with 429)
+for i in {1..35}; do curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:5001/api/v1/auth/login; done
 ```
 
 #### 2. Health and Readiness Checks

@@ -1,15 +1,16 @@
 import { useState } from 'react';
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { isAxiosError } from 'axios';
 import { format } from 'date-fns';
 import {
-  Building2, CheckCircle2, ChevronDown, Clock, MapPin,
+  AlertCircle, Building2, CheckCircle2, ChevronDown, Clock, MapPin,
   Search, Send, SlidersHorizontal, Wallet, XCircle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { ApiResponse, Interest, Listing, ListingsFilterInput } from 'shared';
 import { api } from '@/lib/api';
+import { useAuthStore } from '@/stores/auth-store';
 import { motion } from 'framer-motion';
 
 type ListingSearchResponse = ApiResponse<{ listings: Listing[] }>;
@@ -90,6 +91,8 @@ function ScoreRing({ score }: { score: number }) {
 function ListingResultCard({ listing, index }: { listing: Listing; index: number }) {
   const score = listing.score?.score;
   const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+  const isTenant = user?.role === 'TENANT';
   const expressInterestMutation = useMutation({
     mutationFn: async (): Promise<Interest> => {
       const response = await api.post<ApiResponse<{ interest: Interest }>>('/interests', { listingId: listing.id });
@@ -169,7 +172,7 @@ function ListingResultCard({ listing, index }: { listing: Listing; index: number
               {activeInterest.status === 'ACCEPTED' && <span className="badge-success"><CheckCircle2 className="h-3 w-3" /> Accepted</span>}
               {activeInterest.status === 'DECLINED' && <span className="badge-error"><XCircle className="h-3 w-3" /> Declined</span>}
             </div>
-          ) : (
+          ) : isTenant ? (
             <button
               type="button"
               onClick={() => expressInterestMutation.mutate()}
@@ -182,7 +185,7 @@ function ListingResultCard({ listing, index }: { listing: Listing; index: number
               <Send className="h-3 w-3" />
               {expressInterestMutation.isPending ? 'Sending…' : 'Express Interest'}
             </button>
-          )}
+          ) : null}
           <Link
             to={`/dashboard/listings/${listing.id}`}
             className="flex w-full h-7 items-center justify-center rounded-md text-xs font-medium transition-colors duration-150"
@@ -202,6 +205,17 @@ export default function BrowseListings() {
   const [draft, setDraft] = useState<FilterForm>(initialFilterForm);
   const [filters, setFilters] = useState<BrowseFilters>({ sort: 'score', limit: 20 });
   const [filtersOpen, setFiltersOpen] = useState(true);
+
+  // Check if the tenant has a profile set up (so we can show a banner if not)
+  const profileQuery = useQuery({
+    queryKey: ['my-profile'],
+    queryFn: async () => {
+      const response = await api.get<ApiResponse<{ profile: unknown }>>('/tenants/me/profile');
+      return response.data.data?.profile ?? null;
+    },
+    retry: false,
+  });
+  const hasProfile = !!profileQuery.data;
 
   const listingsQuery = useInfiniteQuery({
     queryKey: ['listings', filters],
@@ -240,6 +254,29 @@ export default function BrowseListings() {
         <h1>Browse rooms</h1>
         <p>AI-ranked listings matched to your preferences.</p>
       </div>
+
+      {/* No-profile banner */}
+      {!profileQuery.isLoading && !hasProfile && (
+        <div
+          className="mb-5 flex items-start gap-3 rounded-xl px-4 py-3.5"
+          style={{ backgroundColor: 'oklch(0.720 0.130 75 / 0.08)', border: '1px solid oklch(0.720 0.130 75 / 0.3)' }}
+        >
+          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" style={{ color: 'oklch(0.720 0.130 75)' }} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium" style={{ color: 'oklch(0.720 0.130 75)' }}>Tenant profile not set up</p>
+            <p className="text-xs mt-0.5" style={{ color: 'oklch(0.520 0.010 240)' }}>
+              Set up your profile to get AI-matched scores and express interest in listings.
+            </p>
+          </div>
+          <Link
+            to="/dashboard/profile"
+            className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+            style={{ backgroundColor: 'oklch(0.720 0.130 75 / 0.15)', color: 'oklch(0.720 0.130 75)' }}
+          >
+            Set up now →
+          </Link>
+        </div>
+      )}
 
       {/* Filter panel */}
       <div className="rounded-xl mb-6 overflow-hidden" style={{ backgroundColor: SURFACE, border: `1px solid ${BORDER}` }}>

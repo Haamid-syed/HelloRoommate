@@ -8,7 +8,9 @@ import {
 import toast from 'react-hot-toast';
 import type { ApiResponse, Interest, Listing } from 'shared';
 import { api } from '@/lib/api';
+import { useAuthStore } from '@/stores/auth-store';
 import { motion } from 'framer-motion';
+import { isAxiosError } from 'axios';
 
 type ListingDetailResponse = ApiResponse<{ listing: Listing }>;
 type ExplanationResponse = ApiResponse<{
@@ -26,7 +28,6 @@ const BORDER   = 'oklch(0.210 0.006 240)';
 const INK      = 'oklch(0.930 0 0)';
 const MUTED    = 'oklch(0.520 0.010 240)';
 const PRIMARY  = 'oklch(0.530 0.115 195)';
-const BG       = 'oklch(0.090 0 0)';
 
 function scoreColor(score: number): string {
   if (score >= 80) return 'oklch(0.680 0.145 148)';
@@ -68,6 +69,10 @@ export default function ListingDetails() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
 
+  // ── ALL HOOKS MUST BE AT THE TOP — before any conditional returns ──
+  const user = useAuthStore((s) => s.user);
+  const isTenant = user?.role === 'TENANT';
+
   const listingQuery = useQuery({
     queryKey: ['listing', id],
     queryFn: async (): Promise<Listing> => {
@@ -84,7 +89,10 @@ export default function ListingDetails() {
       const response = await api.get<ExplanationResponse>(`/listings/${id}/explanation`);
       return response.data.data;
     },
-    enabled: !!listingQuery.data?.score,
+    // Only run if we have a listing with a score AND the user is a tenant
+    enabled: isTenant && !!listingQuery.data?.score,
+    // Don't treat a 400 (no profile) as a hard error — just show nothing
+    retry: false,
   });
 
   const expressInterestMutation = useMutation({
@@ -100,11 +108,20 @@ export default function ListingDetails() {
       toast.success('Interest expressed successfully!');
     },
     onError: (error: unknown) => {
-      const err = error as { response?: { data?: { error?: { message?: string } } } };
-      toast.error(err.response?.data?.error?.message ?? 'Failed to express interest');
+      if (isAxiosError<ApiResponse>(error)) {
+        const msg = error.response?.data?.error?.message;
+        if (msg?.includes('profile')) {
+          toast.error('Set up your tenant profile first before expressing interest.');
+          return;
+        }
+        toast.error(msg ?? 'Failed to express interest');
+      } else {
+        toast.error('Failed to express interest');
+      }
     },
   });
 
+  // ── Early returns AFTER all hooks ──
   if (listingQuery.isLoading) {
     return (
       <div className="flex h-80 flex-col items-center justify-center gap-3">
@@ -199,8 +216,8 @@ export default function ListingDetails() {
 
         {/* Sidebar */}
         <div className="space-y-4">
-          {/* Match score widget */}
-          {score !== undefined && (
+          {/* Match score widget — only for tenants with a score */}
+          {isTenant && score !== undefined && (
             <div className="rounded-xl p-5 space-y-4" style={{ backgroundColor: SURFACE, border: `1px solid ${BORDER}` }}>
               <h3 className="text-sm font-semibold" style={{ color: INK }}>Match Quality</h3>
 
@@ -225,7 +242,7 @@ export default function ListingDetails() {
                   </div>
                 ) : explanationQuery.isError ? (
                   <p className="text-xs rounded-lg p-3" style={{ backgroundColor: 'oklch(0.580 0.185 25 / 0.08)', color: 'oklch(0.580 0.185 25)' }}>
-                    Failed to fetch AI explanation. Reload to try again.
+                    AI explanation unavailable. Set up your tenant profile to enable this.
                   </p>
                 ) : explanationQuery.data ? (
                   <div className="space-y-2.5">
@@ -245,69 +262,71 @@ export default function ListingDetails() {
             </div>
           )}
 
-          {/* Interest widget */}
-          <div className="rounded-xl p-5 space-y-4" style={{ backgroundColor: SURFACE, border: `1px solid ${BORDER}` }}>
-            <h3 className="text-sm font-semibold" style={{ color: INK }}>Next Steps</h3>
+          {/* Interest widget — only shown to tenants */}
+          {isTenant && (
+            <div className="rounded-xl p-5 space-y-4" style={{ backgroundColor: SURFACE, border: `1px solid ${BORDER}` }}>
+              <h3 className="text-sm font-semibold" style={{ color: INK }}>Next Steps</h3>
 
-            {activeInterest ? (
-              <div className="space-y-2.5">
-                {activeInterest.status === 'PENDING' && (
-                  <div
-                    className="flex items-center gap-2 rounded-lg px-3.5 py-3 text-sm"
-                    style={{ backgroundColor: 'oklch(0.720 0.130 75 / 0.1)', color: 'oklch(0.720 0.130 75)', border: '1px solid oklch(0.720 0.130 75 / 0.25)' }}
-                  >
-                    <Clock className="h-4 w-4 shrink-0" />
-                    <div>
-                      <p className="font-semibold">Interest Pending</p>
-                      <p className="text-xs opacity-80 font-normal mt-0.5">Waiting for owner response.</p>
-                    </div>
-                  </div>
-                )}
-                {activeInterest.status === 'ACCEPTED' && (
-                  <div className="flex flex-col gap-2.5">
+              {activeInterest ? (
+                <div className="space-y-2.5">
+                  {activeInterest.status === 'PENDING' && (
                     <div
                       className="flex items-center gap-2 rounded-lg px-3.5 py-3 text-sm"
-                      style={{ backgroundColor: 'oklch(0.680 0.145 148 / 0.1)', color: 'oklch(0.680 0.145 148)', border: '1px solid oklch(0.680 0.145 148 / 0.25)' }}
+                      style={{ backgroundColor: 'oklch(0.720 0.130 75 / 0.1)', color: 'oklch(0.720 0.130 75)', border: '1px solid oklch(0.720 0.130 75 / 0.25)' }}
                     >
-                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                      <Clock className="h-4 w-4 shrink-0" />
                       <div>
-                        <p className="font-semibold">Interest Accepted!</p>
-                        <p className="text-xs opacity-80 font-normal mt-0.5">Check your inbox to chat.</p>
+                        <p className="font-semibold">Interest Pending</p>
+                        <p className="text-xs opacity-80 font-normal mt-0.5">Waiting for owner response.</p>
                       </div>
                     </div>
-                    <Link
-                      to="/dashboard/chat"
-                      className="btn-primary w-full h-9 text-sm justify-center"
-                    >
-                      Open Inbox
-                    </Link>
-                  </div>
-                )}
-                {activeInterest.status === 'DECLINED' && (
-                  <div
-                    className="flex items-center gap-2 rounded-lg px-3.5 py-3 text-sm"
-                    style={{ backgroundColor: 'oklch(0.580 0.185 25 / 0.1)', color: 'oklch(0.580 0.185 25)', border: '1px solid oklch(0.580 0.185 25 / 0.25)' }}
-                  >
-                    <XCircle className="h-4 w-4 shrink-0" />
-                    <div>
-                      <p className="font-semibold">Interest Declined</p>
-                      <p className="text-xs opacity-80 font-normal mt-0.5">This interest was declined.</p>
+                  )}
+                  {activeInterest.status === 'ACCEPTED' && (
+                    <div className="flex flex-col gap-2.5">
+                      <div
+                        className="flex items-center gap-2 rounded-lg px-3.5 py-3 text-sm"
+                        style={{ backgroundColor: 'oklch(0.680 0.145 148 / 0.1)', color: 'oklch(0.680 0.145 148)', border: '1px solid oklch(0.680 0.145 148 / 0.25)' }}
+                      >
+                        <CheckCircle2 className="h-4 w-4 shrink-0" />
+                        <div>
+                          <p className="font-semibold">Interest Accepted!</p>
+                          <p className="text-xs opacity-80 font-normal mt-0.5">Check your inbox to chat.</p>
+                        </div>
+                      </div>
+                      <Link
+                        to="/dashboard/chat"
+                        className="btn-primary w-full h-9 text-sm justify-center"
+                      >
+                        Open Inbox
+                      </Link>
                     </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => expressInterestMutation.mutate()}
-                disabled={expressInterestMutation.isPending}
-                className="btn-primary w-full h-9 text-sm justify-center disabled:opacity-50"
-              >
-                <Send className="h-4 w-4" />
-                {expressInterestMutation.isPending ? 'Sending…' : 'Express Interest'}
-              </button>
-            )}
-          </div>
+                  )}
+                  {activeInterest.status === 'DECLINED' && (
+                    <div
+                      className="flex items-center gap-2 rounded-lg px-3.5 py-3 text-sm"
+                      style={{ backgroundColor: 'oklch(0.580 0.185 25 / 0.1)', color: 'oklch(0.580 0.185 25)', border: '1px solid oklch(0.580 0.185 25 / 0.25)' }}
+                    >
+                      <XCircle className="h-4 w-4 shrink-0" />
+                      <div>
+                        <p className="font-semibold">Interest Declined</p>
+                        <p className="text-xs opacity-80 font-normal mt-0.5">This interest was declined.</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => expressInterestMutation.mutate()}
+                  disabled={expressInterestMutation.isPending}
+                  className="btn-primary w-full h-9 text-sm justify-center disabled:opacity-50"
+                >
+                  <Send className="h-4 w-4" />
+                  {expressInterestMutation.isPending ? 'Sending…' : 'Express Interest'}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

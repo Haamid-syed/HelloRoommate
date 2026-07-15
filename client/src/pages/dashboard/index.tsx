@@ -18,6 +18,7 @@ import {
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import AccountPanel from './account';
 import OwnerListings from './listings/mine';
 import CreateListing from './listings/create';
 import ListingDetails from './listings/details';
@@ -74,6 +75,7 @@ const PRIMARY_COLOR = 'oklch(0.530 0.115 195)';
 function SidebarContent({ onClose }: { onClose?: () => void }) {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const [accountOpen, setAccountOpen] = useState(false);
 
   const navItems =
     user?.role === 'OWNER'  ? ownerNav  :
@@ -104,9 +106,16 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
         </span>
       </div>
 
-      {/* User chip */}
+      {/* User chip — clickable to open account panel */}
       <div className="px-3 py-3" style={{ borderBottom: `1px solid ${BORDER_COLOR}` }}>
-        <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg" style={{ backgroundColor: 'oklch(0.175 0.008 240)' }}>
+        <button
+          type="button"
+          onClick={() => setAccountOpen(true)}
+          className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg transition-colors duration-150 text-left"
+          style={{ backgroundColor: 'oklch(0.175 0.008 240)' }}
+          onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'oklch(0.210 0.006 240)'}
+          onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'oklch(0.175 0.008 240)'}
+        >
           <div
             className="w-7 h-7 rounded-md flex items-center justify-center shrink-0 text-xs font-bold"
             style={{ backgroundColor: 'oklch(0.530 0.115 195 / 0.15)', color: PRIMARY_COLOR }}
@@ -117,7 +126,8 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
             <p className="text-xs font-semibold truncate" style={{ color: INK_COLOR }}>{user?.name}</p>
             <p className="text-[10px] font-medium" style={{ color: MUTED_COLOR }}>{user?.role}</p>
           </div>
-        </div>
+        </button>
+        <AccountPanel open={accountOpen} onClose={() => setAccountOpen(false)} />
       </div>
 
       {/* Nav items */}

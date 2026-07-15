@@ -114,6 +114,10 @@ export async function enqueueScoresForProfile(tenantProfileId: string): Promise<
 
   if (!profile) return;
 
+  // Delete ALL existing scores for this profile so stale rows from previous
+  // preferences (different city / budget range) don't surface after a profile update.
+  await prisma.compatibilityScore.deleteMany({ where: { tenantProfileId } });
+
   const budgetFloor = Math.floor(profile.budgetMin * 0.7);
   const budgetCeiling = Math.ceil(profile.budgetMax * 1.3);
   const candidateListings = await prisma.listing.findMany({

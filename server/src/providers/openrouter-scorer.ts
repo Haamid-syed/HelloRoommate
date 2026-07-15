@@ -216,11 +216,30 @@ Listings: ${JSON.stringify(
           throw new Error('Empty response from OpenRouter');
         }
 
-        const parsed = JSON.parse(content) as { results?: unknown[] };
+        // Robust JSON extraction — many free models wrap in markdown or prepend prose
+        let parsed: { results?: unknown[] };
+        try {
+          parsed = JSON.parse(content) as { results?: unknown[] };
+        } catch {
+          // Try extracting JSON from markdown code block ```json ... ```
+          const fenceMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+          const raw = fenceMatch ? fenceMatch[1]! : content;
+          // Find the first {...} or [...] in the string
+          const objectMatch = raw.match(/(\{[\s\S]*\})/);
+          if (!objectMatch) {
+            throw new Error(`Invalid JSON from model ${model}: ${content.slice(0, 80)}`);
+          }
+          try {
+            parsed = JSON.parse(objectMatch[1]!) as { results?: unknown[] };
+          } catch {
+            throw new Error(`Unparseable JSON from model ${model}: ${content.slice(0, 80)}`);
+          }
+        }
 
         if (!Array.isArray(parsed.results)) {
           throw new Error('LLM response missing results array');
         }
+
 
         // Change 3: Per-item validation — bad items get null, not thrown
         return items.map((item) => {

@@ -24,9 +24,11 @@ const envSchema = z.object({
   OPENROUTER_MODEL: z.string().default('google/gemini-2.0-flash-exp:free'),
 
   // Email
-  EMAIL_PROVIDER: z.enum(['console', 'resend']).default('console'),
+  EMAIL_PROVIDER: z.enum(['console', 'resend', 'gmail']).default('console'),
   RESEND_API_KEY: z.string().optional().default(''),
   EMAIL_FROM: z.string().default('noreply@roomfinder.app'),
+  GMAIL_USER: z.string().optional().default(''),
+  GMAIL_APP_PASSWORD: z.string().optional().default(''),
 
   // Cloudinary
   CLOUDINARY_CLOUD_NAME: z.string().optional().default(''),
