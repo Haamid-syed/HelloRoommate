@@ -21,7 +21,7 @@ const envSchema = z.object({
 
   // LLM — OpenRouter
   OPENROUTER_API_KEY: z.string().optional().default(''),
-  OPENROUTER_MODEL: z.string().default('google/gemini-2.0-flash-exp:free'),
+  OPENROUTER_MODEL: z.string().default('meta-llama/llama-3.3-70b-instruct:free'),
 
   // Email
   EMAIL_PROVIDER: z.enum(['console', 'resend', 'gmail']).default('console'),
