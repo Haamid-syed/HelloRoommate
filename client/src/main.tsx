@@ -26,10 +26,14 @@ createRoot(document.getElementById('root')!).render(
           toastOptions={{
             duration: 4000,
             style: {
-              background: 'hsl(var(--card))',
-              color: 'hsl(var(--card-foreground))',
-              border: '1px solid hsl(var(--border))',
+              background: 'oklch(0.175 0.008 240)',
+              color: 'oklch(0.930 0 0)',
+              border: '1px solid oklch(0.210 0.006 240)',
+              fontSize: '0.875rem',
+              borderRadius: '0.5rem',
             },
+            success: { iconTheme: { primary: 'oklch(0.680 0.145 148)', secondary: 'oklch(0.930 0 0)' } },
+            error:   { iconTheme: { primary: 'oklch(0.580 0.185 25)',  secondary: 'oklch(0.930 0 0)' } },
           }}
         />
       </BrowserRouter>

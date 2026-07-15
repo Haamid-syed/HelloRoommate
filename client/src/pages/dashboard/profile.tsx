@@ -22,16 +22,24 @@ const initialForm: ProfileFormState = {
 
 const currency = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
 
+const SURFACE   = 'oklch(0.135 0.006 240)';
+const SURFACE2  = 'oklch(0.175 0.008 240)';
+const BORDER    = 'oklch(0.210 0.006 240)';
+const INK       = 'oklch(0.930 0 0)';
+const MUTED     = 'oklch(0.520 0.010 240)';
+const PRIMARY   = 'oklch(0.530 0.115 195)';
+
 function StatCard({ icon: Icon, label, children }: { icon: typeof MapPin; label: string; children: React.ReactNode }) {
   return (
-    <div className="flex gap-4 p-4 rounded-xl" style={{ background: 'hsl(var(--surface-2))' }}>
-      <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-        style={{ background: 'hsl(37 78% 60% / 0.1)' }}
+    <div className="flex gap-3 p-4 rounded-lg" style={{ backgroundColor: SURFACE2, border: `1px solid ${BORDER}` }}>
+      <div
+        className="w-8 h-8 rounded-md flex items-center justify-center shrink-0"
+        style={{ backgroundColor: 'oklch(0.530 0.115 195 / 0.12)' }}
       >
-        <Icon className="h-4 w-4 text-gold" />
+        <Icon className="h-4 w-4" style={{ color: PRIMARY }} />
       </div>
-      <div>
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+      <div className="min-w-0">
+        <p className="text-xs font-medium" style={{ color: MUTED }}>{label}</p>
         <div className="mt-1">{children}</div>
       </div>
     </div>
@@ -41,9 +49,9 @@ function StatCard({ icon: Icon, label, children }: { icon: typeof MapPin; label:
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-muted-foreground mb-2 tracking-wide uppercase">{label}</label>
+      <label className="block text-sm font-medium mb-1.5" style={{ color: MUTED }}>{label}</label>
       {children}
-      {hint && <p className="mt-1.5 text-xs text-muted-foreground">{hint}</p>}
+      {hint && <p className="mt-1 text-xs" style={{ color: MUTED }}>{hint}</p>}
     </div>
   );
 }
@@ -96,16 +104,16 @@ export default function TenantProfilePage() {
 
   if (profileQuery.isLoading) {
     return (
-      <div className="space-y-4">
-        {[0, 1, 2].map(i => <div key={i} className="skeleton h-20 rounded-2xl" style={{ animationDelay: `${i * 0.1}s` }} />)}
+      <div className="space-y-3">
+        {[0, 1, 2].map(i => <div key={i} className="skeleton h-16 rounded-lg" style={{ animationDelay: `${i * 0.1}s` }} />)}
       </div>
     );
   }
 
   if (profileQuery.isError) {
     return (
-      <div className="card-elevated rounded-2xl p-8 text-center">
-        <p className="font-medium text-red-400">We couldn't load your profile. Please refresh.</p>
+      <div className="p-6 text-center rounded-lg" style={{ backgroundColor: SURFACE, border: `1px solid ${BORDER}` }}>
+        <p className="text-sm font-medium" style={{ color: 'oklch(0.580 0.185 25)' }}>We couldn't load your profile. Please refresh.</p>
       </div>
     );
   }
@@ -114,27 +122,26 @@ export default function TenantProfilePage() {
 
   return (
     <section>
-      <div className="mb-8">
-        <p className="label-overline">Tenant Dashboard</p>
-        <h1 className="font-serif text-display-md text-foreground mt-2">Your search profile</h1>
-        <p className="mt-1.5 text-sm text-muted-foreground">
-          These preferences power your AI compatibility scores.
-        </p>
+      <div className="page-header">
+        <h1>Your search profile</h1>
+        <p>These preferences power your AI compatibility scores.</p>
       </div>
 
       {profile ? (
         <motion.div
-          className="mb-8 grid gap-3 sm:grid-cols-3 card-elevated rounded-2xl p-5"
-          initial={{ opacity: 0, y: 16 }}
+          className="mb-6 grid gap-3 sm:grid-cols-3"
+          initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.2 }}
         >
           <StatCard icon={MapPin} label="Preferred location">
-            <p className="font-semibold text-sm text-foreground">{profile.preferredCity}</p>
-            <div className="mt-2 flex flex-wrap gap-1.5">
+            <p className="text-sm font-semibold" style={{ color: INK }}>{profile.preferredCity}</p>
+            <div className="mt-1.5 flex flex-wrap gap-1">
               {profile.preferredAreas.map((area) => (
-                <span key={area} className="text-[11px] px-2 py-0.5 rounded-full font-medium"
-                  style={{ background: 'hsl(37 78% 60% / 0.12)', color: 'hsl(37 78% 65%)' }}
+                <span
+                  key={area}
+                  className="text-[11px] px-2 py-0.5 rounded-full font-medium"
+                  style={{ backgroundColor: 'oklch(0.530 0.115 195 / 0.12)', color: PRIMARY }}
                 >
                   {area}
                 </span>
@@ -142,65 +149,111 @@ export default function TenantProfilePage() {
             </div>
           </StatCard>
           <StatCard icon={Wallet} label="Monthly budget">
-            <p className="font-semibold text-sm text-foreground">{currency.format(profile.budgetMin)} – {currency.format(profile.budgetMax)}</p>
+            <p className="text-sm font-semibold" style={{ color: INK }}>
+              {currency.format(profile.budgetMin)} – {currency.format(profile.budgetMax)}
+            </p>
           </StatCard>
           <StatCard icon={CalendarDays} label="Move-in date">
-            <p className="font-semibold text-sm text-foreground">{format(new Date(profile.moveInDate), 'MMMM d, yyyy')}</p>
+            <p className="text-sm font-semibold" style={{ color: INK }}>
+              {format(new Date(profile.moveInDate), 'MMMM d, yyyy')}
+            </p>
           </StatCard>
         </motion.div>
       ) : (
         <motion.div
-          className="mb-8 rounded-2xl p-5 border"
-          style={{ background: 'hsl(37 78% 60% / 0.06)', borderColor: 'hsl(37 78% 60% / 0.2)' }}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 rounded-lg p-4"
+          style={{ backgroundColor: 'oklch(0.530 0.115 195 / 0.08)', border: '1px solid oklch(0.530 0.115 195 / 0.2)' }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
         >
-          <h2 className="font-semibold text-foreground">Set up your profile to start finding rooms</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Tell us where and when you want to move, plus your budget range.</p>
+          <p className="text-sm font-semibold" style={{ color: INK }}>Set up your profile to start finding rooms</p>
+          <p className="mt-0.5 text-sm" style={{ color: MUTED }}>Tell us where and when you want to move, plus your budget range.</p>
         </motion.div>
       )}
 
       <motion.form
         onSubmit={handleSubmit}
-        className="max-w-3xl card-elevated rounded-2xl p-6 sm:p-8"
-        initial={{ opacity: 0, y: 16 }}
+        className="max-w-2xl rounded-xl p-5 sm:p-6"
+        style={{ backgroundColor: SURFACE, border: `1px solid ${BORDER}` }}
+        initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.2, delay: 0.05 }}
       >
-        <h2 className="font-serif text-lg font-semibold text-foreground">
+        <h2 className="text-heading-sm mb-5" style={{ color: INK }}>
           {profile ? 'Update preferences' : 'Search preferences'}
         </h2>
 
-        <div className="mt-6 grid gap-5 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Preferred city">
-            <input id="preferredCity" value={form.preferredCity} onChange={(e) => updateField('preferredCity', e.target.value)}
-              placeholder="Mumbai" required minLength={2} className="input-dark w-full h-12 px-4 text-sm" />
+            <input
+              id="preferredCity"
+              value={form.preferredCity}
+              onChange={(e) => updateField('preferredCity', e.target.value)}
+              placeholder="Mumbai"
+              required
+              minLength={2}
+              className="input-field h-10 px-3"
+            />
           </Field>
           <Field label="Preferred areas" hint="Separate areas with commas">
-            <input id="preferredAreas" value={form.preferredAreas} onChange={(e) => updateField('preferredAreas', e.target.value)}
-              placeholder="Andheri West, Bandra, Juhu" required className="input-dark w-full h-12 px-4 text-sm" />
+            <input
+              id="preferredAreas"
+              value={form.preferredAreas}
+              onChange={(e) => updateField('preferredAreas', e.target.value)}
+              placeholder="Andheri West, Bandra, Juhu"
+              required
+              className="input-field h-10 px-3"
+            />
           </Field>
           <Field label="Minimum budget (₹)">
-            <input id="budgetMin" type="number" value={form.budgetMin} onChange={(e) => updateField('budgetMin', e.target.value)}
-              required min={1} step={1} placeholder="15000" className="input-dark w-full h-12 px-4 text-sm" />
+            <input
+              id="budgetMin"
+              type="number"
+              value={form.budgetMin}
+              onChange={(e) => updateField('budgetMin', e.target.value)}
+              required
+              min={1}
+              step={1}
+              placeholder="15000"
+              className="input-field h-10 px-3"
+            />
           </Field>
           <Field label="Maximum budget (₹)">
-            <input id="budgetMax" type="number" value={form.budgetMax} onChange={(e) => updateField('budgetMax', e.target.value)}
-              required min={1} step={1} placeholder="22000" className="input-dark w-full h-12 px-4 text-sm" />
+            <input
+              id="budgetMax"
+              type="number"
+              value={form.budgetMax}
+              onChange={(e) => updateField('budgetMax', e.target.value)}
+              required
+              min={1}
+              step={1}
+              placeholder="22000"
+              className="input-field h-10 px-3"
+            />
           </Field>
           <Field label="Move-in date">
-            <input id="moveInDate" type="date" value={form.moveInDate} onChange={(e) => updateField('moveInDate', e.target.value)}
-              required className="input-dark w-full h-12 px-4 text-sm" />
+            <input
+              id="moveInDate"
+              type="date"
+              value={form.moveInDate}
+              onChange={(e) => updateField('moveInDate', e.target.value)}
+              required
+              className="input-field h-10 px-3"
+            />
           </Field>
         </div>
 
-        <div className="mt-8 flex justify-end border-t border-border pt-6">
+        <div className="mt-6 flex justify-end" style={{ borderTop: `1px solid ${BORDER}`, paddingTop: '1.25rem' }}>
           <button
             type="submit"
             disabled={upsertMutation.isPending}
-            className="btn-gold h-11 px-6 text-sm inline-flex items-center gap-2 disabled:opacity-50"
+            className="btn-primary h-9 px-5 text-sm"
           >
-            <Save className="h-4 w-4" />
+            {upsertMutation.isPending ? (
+              <div className="w-3.5 h-3.5 border-2 rounded-full animate-spin" style={{ borderColor: 'oklch(0.930 0 0 / 0.3)', borderTopColor: 'oklch(0.930 0 0)' }} />
+            ) : (
+              <Save className="h-3.5 w-3.5" />
+            )}
             {upsertMutation.isPending ? 'Saving…' : 'Save profile'}
           </button>
         </div>
