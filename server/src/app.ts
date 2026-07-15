@@ -16,7 +16,24 @@ export function createApp() {
   app.use(helmet());
   app.use(
     cors({
-      origin: env.CORS_ORIGIN.split(',').map((o) => o.trim().replace(/\/$/, '')),
+      origin: (requestOrigin, callback) => {
+        if (!requestOrigin) {
+          callback(null, true);
+          return;
+        }
+        const allowedOrigins = env.CORS_ORIGIN.split(',').map((o) => o.trim().replace(/\/$/, ''));
+        const isAllowed = allowedOrigins.some((allowed) => {
+          const cleanAllowed = allowed.replace(/^https?:\/\//, '').toLowerCase();
+          const cleanRequest = requestOrigin.replace(/^https?:\/\//, '').toLowerCase();
+          return cleanAllowed === cleanRequest;
+        });
+        if (isAllowed) {
+          callback(null, true);
+        } else {
+          logger.warn({ requestOrigin, allowedOrigins }, 'CORS request blocked due to origin mismatch');
+          callback(null, false);
+        }
+      },
       credentials: true,
       optionsSuccessStatus: 200,
     })
