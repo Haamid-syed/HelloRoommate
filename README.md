@@ -1,4 +1,4 @@
-# RoomFinder — AI-Powered Room & Flatmate Matching
+# Hello Roommate — AI-Powered Room & Flatmate Matching
 
 > Find your perfect room or flatmate with AI-powered compatibility scoring, real-time chat, and smart notifications.
 > This project is fully developed, end-to-end verified, and deployed to production.
@@ -12,7 +12,7 @@
 
 ---
 
-## 🔗 Live Demo & Deployments
+## Live Demo & Deployments
 
 - **Application Frontend (Vercel)**: [https://hello-roommate.vercel.app](https://hello-roommate.vercel.app)
 - **API Backend (Railway)**: [https://roomfinder-production.up.railway.app](https://roomfinder-production.up.railway.app)
@@ -23,7 +23,7 @@
 
 ---
 
-## 📚 Table of Contents
+## Table of Contents
 
 1. [Overview](#overview)
 2. [Quick Start & Setup Guide](#quick-start--setup-guide)
@@ -38,7 +38,7 @@
 
 ## Overview
 
-RoomFinder is a full-stack platform that connects room **owners** with potential **tenants** through intelligent matching. Unlike simple listing sites, RoomFinder uses an **AI-powered compatibility engine** that scores and ranks matches based on budget fit, location preference, and move-in timing — giving both parties confidence in their choices.
+Hello Roommate is a full-stack platform that connects room **owners** with potential **tenants** through intelligent matching. Unlike simple listing sites, Hello Roommate uses an **AI-powered compatibility engine** that scores and ranks matches based on budget fit, location preference, and move-in timing — giving both parties confidence in their choices.
 
 ### The Problem
 Renting a room involves more than just price. Finding someone whose expectations on location, availability timing, and budget align is time-consuming and often frustrating.
@@ -168,7 +168,7 @@ npm run dev
 
 All version-one REST routes are prefixed with `/api/v1` and validation is enforced via custom Zod middleware.
 
-### 🔑 Authentication
+### Authentication
 
 | Method | Route | Description | RBAC Role | Payload / Params |
 |---|---|---|---|---|
@@ -178,7 +178,7 @@ All version-one REST routes are prefixed with `/api/v1` and validation is enforc
 | `POST` | `/auth/logout` | Revoke session tokens | Bearer | Refresh cookie attached |
 | `GET` | `/auth/me` | Fetch active user info | Bearer | — |
 
-### 🏠 Listings
+### Listings
 
 | Method | Route | Description | RBAC Role | Payload / Params |
 |---|---|---|---|---|
@@ -190,14 +190,14 @@ All version-one REST routes are prefixed with `/api/v1` and validation is enforc
 | `GET` | `/listings/:id` | Get details and saved match score | Bearer | ID param |
 | `POST` | `/listings/upload` | Upload listing photo to Cloudinary | OWNER | Multipart form-data (single file field name: `photo`) |
 
-### 👤 Tenant Profiles
+### Tenant Profiles
 
 | Method | Route | Description | RBAC Role | Payload / Params |
 |---|---|---|---|---|
 | `PUT` | `/tenants/me/profile` | Create/update profile details | TENANT | `{ preferredCity, preferredAreas[], budgetMin, budgetMax, moveInDate, preferences? }` |
 | `GET` | `/tenants/me/profile` | Retrieve active tenant profile | TENANT | — |
 
-### 🤝 Interests
+### Interests
 
 | Method | Route | Description | RBAC Role | Payload / Params |
 |---|---|---|---|---|
@@ -206,14 +206,14 @@ All version-one REST routes are prefixed with `/api/v1` and validation is enforc
 | `POST` | `/interests/:id/decline` | Decline interest | OWNER | ID param (owner checked) |
 | `GET` | `/interests` | Fetch received/sent interests | Bearer | Query: `role=sent\|received` |
 
-### 💬 Chat
+### Chat
 
 | Method | Route | Description | RBAC Role | Payload / Params |
 |---|---|---|---|---|
 | `GET` | `/conversations` | Fetch chat channels list | Bearer | — |
 | `GET` | `/conversations/:id/messages` | Keyset message history | Bearer | ID param. Query: `cursor, limit` |
 
-### 🛡️ Admin Panel
+### Admin Panel
 
 | Method | Route | Description | RBAC Role | Payload / Params |
 |---|---|---|---|---|
@@ -224,7 +224,7 @@ All version-one REST routes are prefixed with `/api/v1` and validation is enforc
 | `GET` | `/admin/activity` | Fetch audit logs history | ADMIN | Pagination query |
 | `GET` | `/admin/metrics` | Retrieve dashboard usage metrics | ADMIN | — |
 
-### 🩺 Health Checks
+### Health Checks
 
 | Method | Route | Description | Auth |
 |---|---|---|---|
@@ -405,7 +405,7 @@ curl http://localhost:5001/readyz
 
 ---
 
-## 🎯 Evaluation Focus & Codebase Mapping
+## Evaluation Focus & Codebase Mapping
 
 To help evaluate the technical implementation, here is a mapping of the evaluation focus areas to the primary codebase files:
 
