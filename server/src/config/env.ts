@@ -24,11 +24,22 @@ const envSchema = z.object({
   OPENROUTER_MODEL: z.string().default('meta-llama/llama-3.3-70b-instruct:free'),
 
   // Email
-  EMAIL_PROVIDER: z.enum(['console', 'resend', 'gmail']).default('console'),
+  EMAIL_PROVIDER: z.enum(['console', 'resend', 'gmail', 'smtp']).default('console'),
   RESEND_API_KEY: z.string().optional().default(''),
   EMAIL_FROM: z.string().default('noreply@roomfinder.app'),
   GMAIL_USER: z.string().optional().default(''),
   GMAIL_APP_PASSWORD: z.string().optional().default(''),
+  SMTP_HOST: z.string().default('127.0.0.1'),
+  SMTP_PORT: z.coerce.number().int().positive().default(1025),
+
+  // Worker controls (defaults preserve normal production behavior)
+  OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(10_000),
+  OUTBOX_RETRY_BASE_MS: z.coerce.number().int().positive().default(60_000),
+  OUTBOX_BATCH_SIZE: z.coerce.number().int().min(1).max(1000).default(10),
+
+  // Rate-limit overrides are useful for isolated load tests only.
+  API_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
+  AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(30),
 
   // Cloudinary
   CLOUDINARY_CLOUD_NAME: z.string().optional().default(''),
@@ -39,6 +50,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(5000),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

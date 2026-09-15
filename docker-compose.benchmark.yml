@@ -1,0 +1,50 @@
+name: roomfinder-benchmark
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: roomfinder_benchmark
+      POSTGRES_USER: roomfinder
+      POSTGRES_PASSWORD: roomfinder-local-only
+    ports:
+      - "55432:5432"
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - max_connections=100
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U roomfinder -d roomfinder_benchmark"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - benchmark-postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "56379:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  mailpit:
+    image: axllent/mailpit:v1.31.1
+    ports:
+      - "58025:1025"
+      - "58080:8025"
+    environment:
+      MP_MAX_MESSAGES: 20000
+      MP_DATABASE: /data/mailpit.db
+    volumes:
+      - benchmark-mailpit-data:/data
+
+volumes:
+  benchmark-postgres-data:
+  benchmark-mailpit-data:

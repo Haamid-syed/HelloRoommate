@@ -2,6 +2,7 @@ import { sendMessageSchema } from 'shared';
 import { prisma } from '../lib/prisma.js';
 import { logger } from '../lib/logger.js';
 import { checkConversationMembership } from '../services/chat.service.js';
+import { persistMessage } from '../services/chat.service.js';
 import type { RealtimeServer, RealtimeSocket } from './types.js';
 
 async function emitTyping(
@@ -56,11 +57,7 @@ export function registerChatHandlers(io: RealtimeServer, socket: RealtimeSocket)
         return;
       }
 
-      const message = await prisma.message.upsert({
-        where: { uniq_conv_client_msg: { conversationId, clientMsgId } },
-        create: { conversationId, senderId: userId, body, clientMsgId },
-        update: {},
-      });
+      const message = await persistMessage({ conversationId, senderId: userId, body, clientMsgId });
 
       socket.emit('message:ack', {
         clientMsgId,

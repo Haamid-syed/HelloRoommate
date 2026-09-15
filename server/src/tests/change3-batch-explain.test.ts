@@ -5,7 +5,16 @@
  * assert N-1 items get 'LLM' explanations and 1 gets 'TEMPLATED'.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+vi.mock('../config/env.js', () => ({
+  env: {
+    OPENROUTER_API_KEY: 'test-key-12345',
+    OPENROUTER_MODEL: 'google/gemini-2.0-flash-exp:free',
+    NODE_ENV: 'test',
+    LOG_LEVEL: 'silent',
+  },
+}));
 
 const BATCH_SIZE = 6;
 
@@ -36,14 +45,6 @@ function makeBatchItems(n: number) {
 
 describe('Change 3 — LLM batch explanation: per-item failure isolation', () => {
   it('validates explanation per-item — malformed item gets null, others get explanation', async () => {
-    // Mock env module before importing the scorer
-    vi.mock('../config/env.js', () => ({
-      env: {
-        OPENROUTER_API_KEY: 'test-key-12345',
-        OPENROUTER_MODEL: 'google/gemini-2.0-flash-exp:free',
-      },
-    }));
-
     // Reset module registry so scorer gets the mocked env
     vi.resetModules();
     const { OpenRouterScorer } = await import('../providers/openrouter-scorer.js');
@@ -96,12 +97,6 @@ describe('Change 3 — LLM batch explanation: per-item failure isolation', () =>
   });
 
   it('entire batch throws when LLM returns non-OK status', async () => {
-    vi.mock('../config/env.js', () => ({
-      env: {
-        OPENROUTER_API_KEY: 'test-key-12345',
-        OPENROUTER_MODEL: 'google/gemini-2.0-flash-exp:free',
-      },
-    }));
     vi.resetModules();
 
     const { OpenRouterScorer } = await import('../providers/openrouter-scorer.js');

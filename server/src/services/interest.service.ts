@@ -119,7 +119,13 @@ export async function acceptInterest(ownerUserId: string, interestId: string) {
   }
 
   return prisma.$transaction(async (tx) => {
-    // Change 5: Re-verify listing status inside transaction to close the fill-vs-accept race.
+    // Serialize against listing fill before re-checking state. A plain SELECT at
+    // READ COMMITTED does not prevent the listing from being filled immediately
+    // after the check.
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM listings WHERE id = ${interest.listing.id} FOR UPDATE
+    `;
+
     const listing = await tx.listing.findUnique({
       where: { id: interest.listing.id },
       select: { status: true },

@@ -17,7 +17,12 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "seed": "npm run seed -w server",
     "db:migrate": "npm run db:migrate -w server",
-    "db:generate": "npm run db:generate -w server"
+    "db:generate": "npm run db:generate -w server",
+    "benchmark:seed": "tsx benchmarks/seed.ts",
+    "benchmark:http": "tsx benchmarks/http.ts",
+    "benchmark:db": "tsx benchmarks/database.ts",
+    "benchmark:verify": "tsx benchmarks/verify-invariants.ts",
+    "benchmark:outbox": "tsx benchmarks/outbox-recovery.ts"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

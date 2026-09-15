@@ -5,15 +5,16 @@ import tenantRoutes from './tenant.routes.js';
 import interestRoutes from './interest.routes.js';
 import conversationRoutes from './conversation.routes.js';
 import adminRoutes from './admin.routes.js';
-import { authLimiter, apiLimiter } from '../../middleware/rate-limiter.js';
 
 const router = Router();
 
-router.use('/auth', authLimiter, authRoutes);
-router.use('/listings', apiLimiter, listingRoutes);
-router.use('/tenants', apiLimiter, tenantRoutes);
-router.use('/interests', apiLimiter, interestRoutes);
-router.use('/conversations', apiLimiter, conversationRoutes);
-router.use('/admin', apiLimiter, adminRoutes);
+// Rate limiters are mounted once in app.ts. Keeping the router free of duplicate
+// mounts prevents one request from being counted twice.
+router.use('/auth', authRoutes);
+router.use('/listings', listingRoutes);
+router.use('/tenants', tenantRoutes);
+router.use('/interests', interestRoutes);
+router.use('/conversations', conversationRoutes);
+router.use('/admin', adminRoutes);
 
 export default router;

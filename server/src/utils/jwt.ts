@@ -9,7 +9,7 @@ export function signAccessToken(payload: AuthPayload): string {
   });
 }
 
-export function signRefreshToken(payload: { userId: string; family: string }): string {
+export function signRefreshToken(payload: { userId: string; family: string; tokenId: string }): string {
   return jwt.sign(payload, env.JWT_REFRESH_SECRET, {
     expiresIn: env.JWT_REFRESH_EXPIRY as SignOptions['expiresIn'],
   });
@@ -19,6 +19,10 @@ export function verifyAccessToken(token: string): AuthPayload {
   return jwt.verify(token, env.JWT_SECRET) as AuthPayload;
 }
 
-export function verifyRefreshToken(token: string): { userId: string; family: string } {
-  return jwt.verify(token, env.JWT_REFRESH_SECRET) as { userId: string; family: string };
+export function verifyRefreshToken(token: string): { userId: string; family: string; tokenId?: string } {
+  return jwt.verify(token, env.JWT_REFRESH_SECRET) as {
+    userId: string;
+    family: string;
+    tokenId?: string;
+  };
 }

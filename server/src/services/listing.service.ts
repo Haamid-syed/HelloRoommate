@@ -128,6 +128,12 @@ export async function fillListing(listingId: string, ownerId: string) {
   await getOwnedListing(listingId, ownerId);
 
   return prisma.$transaction(async (tx) => {
+    // Serialize fill against interest acceptance. Both operations lock the same
+    // listing row before checking status, preventing a stale ACTIVE read.
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM listings WHERE id = ${listingId} FOR UPDATE
+    `;
+
     // Conditional UPDATE: only succeeds if the listing is still ACTIVE.
     // This closes the TOCTOU race where two concurrent requests both read ACTIVE
     // and then both attempt to UPDATE — only one will match rows.
@@ -205,8 +211,64 @@ export async function searchListings(filters: ListingsFilterInput, tenantProfile
   if (filters.availableFrom) where.availableFrom = { gte: new Date(filters.availableFrom) };
 
   const limit = filters.limit ?? 20;
-  const fetchLimit =
-    filters.sort === 'score' && tenantProfileId ? Math.min(limit * 3, 100) : limit + 1;
+
+  // Score ordering must happen in PostgreSQL across the full filtered result set.
+  // The previous implementation fetched a recency-bounded window (at most 100 rows)
+  // and sorted only that window in memory, so high scores outside it were omitted and
+  // the listing-id cursor did not represent the global order.
+  if (filters.sort === 'score' && tenantProfileId) {
+    const scoreRows = await prisma.compatibilityScore.findMany({
+      where: {
+        tenantProfileId,
+        listing: where,
+      },
+      include: {
+        listing: {
+          include: {
+            photos: { orderBy: { position: 'asc' } },
+            owner: { select: { id: true, name: true, email: true } },
+            interests: {
+              where: { tenantProfileId },
+              select: { id: true, status: true },
+            },
+          },
+        },
+      },
+      orderBy: [{ score: 'desc' }, { listingId: 'asc' }],
+      take: limit + 1,
+      ...(filters.cursor
+        ? {
+            cursor: {
+              tenantProfileId_listingId: {
+                tenantProfileId,
+                listingId: filters.cursor,
+              },
+            },
+            skip: 1,
+          }
+        : {}),
+    });
+
+    const hasMore = scoreRows.length > limit;
+    if (hasMore) scoreRows.pop();
+
+    const listings = scoreRows.map(({ listing, ...score }) => {
+      const { interests, ...listingData } = listing;
+      return {
+        ...listingData,
+        score,
+        interest: interests[0] ?? null,
+      };
+    });
+
+    return {
+      listings,
+      meta: {
+        cursor: listings.length > 0 ? listings[listings.length - 1]!.id : null,
+        hasMore,
+      },
+    };
+  }
 
   // Fix 1: When a tenant is viewing, filter to ONLY listings that have a score row for them.
   // enqueueScoresForProfile/Listing only writes rows for in-range candidates (same city, in budget).
@@ -235,7 +297,7 @@ export async function searchListings(filters: ListingsFilterInput, tenantProfile
       filters.sort === 'rent'
         ? { rent: 'asc' }
         : { createdAt: 'desc' },
-    take: fetchLimit + 1,
+    take: limit + 1,
     ...(filters.cursor ? { cursor: { id: filters.cursor }, skip: 1 } : {}),
   });
 
@@ -249,26 +311,6 @@ export async function searchListings(filters: ListingsFilterInput, tenantProfile
       interest: activeInterest,
     };
   });
-
-  if (filters.sort === 'score' && tenantProfileId) {
-    mappedListings.sort((a, b) => {
-      const scoreA = a.score?.score ?? -1;
-      const scoreB = b.score?.score ?? -1;
-      return scoreB - scoreA;
-    });
-
-    const paginated = mappedListings.slice(0, limit + 1);
-    const hasMore = paginated.length > limit;
-    if (hasMore) paginated.pop();
-
-    return {
-      listings: paginated,
-      meta: {
-        cursor: paginated.length > 0 ? paginated[paginated.length - 1]!.id : null,
-        hasMore,
-      },
-    };
-  }
 
   const hasMore = mappedListings.length > limit;
   if (hasMore) mappedListings.pop();

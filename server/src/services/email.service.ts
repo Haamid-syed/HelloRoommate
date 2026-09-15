@@ -10,6 +10,7 @@ interface SendMailParams {
 
 // Lazily create the Gmail transporter once
 let gmailTransporter: nodemailer.Transporter | null = null;
+let smtpTransporter: nodemailer.Transporter | null = null;
 
 function getGmailTransporter(): nodemailer.Transporter {
   if (!gmailTransporter) {
@@ -27,8 +28,32 @@ function getGmailTransporter(): nodemailer.Transporter {
   return gmailTransporter;
 }
 
+function getSmtpTransporter(): nodemailer.Transporter {
+  if (!smtpTransporter) {
+    smtpTransporter = nodemailer.createTransport({
+      host: env.SMTP_HOST,
+      port: env.SMTP_PORT,
+      secure: false,
+    });
+  }
+  return smtpTransporter;
+}
+
 /** Deliver email through Gmail SMTP, Resend, or log it during local development. */
 export async function sendEmail({ toEmail, subject, htmlBody }: SendMailParams): Promise<void> {
+  // Local SMTP sink (Mailpit in the isolated benchmark environment).
+  if (env.EMAIL_PROVIDER === 'smtp') {
+    const transporter = getSmtpTransporter();
+    await transporter.sendMail({
+      from: env.EMAIL_FROM,
+      to: toEmail,
+      subject,
+      html: htmlBody,
+    });
+    logger.debug({ toEmail, subject }, 'Email sent successfully via local SMTP');
+    return;
+  }
+
   // ── Gmail SMTP ──────────────────────────────────────────────────────────────
   if (env.EMAIL_PROVIDER === 'gmail') {
     const transporter = getGmailTransporter();

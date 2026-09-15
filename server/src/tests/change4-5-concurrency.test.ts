@@ -89,15 +89,14 @@ describe('Change 4 — Concurrent interest creation (partial unique index)', () 
       },
     });
 
-    // Fire two concurrent requests
-    const [r1, r2] = await Promise.all([
-      createInterest(tenant.id, listing.id),
-      createInterest(tenant.id, listing.id),
-    ]);
+    // Fire a burst of concurrent requests for the same logical interest.
+    const results = await Promise.all(
+      Array.from({ length: 25 }, () => createInterest(tenant.id, listing.id))
+    );
 
-    // Both must return the same interest
-    expect(r1.id).toBe(r2.id);
-    expect(r1.status).toBe('PENDING');
+    // Every caller must observe the same winning row.
+    expect(new Set(results.map((result) => result.id)).size).toBe(1);
+    expect(results.every((result) => result.status === 'PENDING')).toBe(true);
 
     // Exactly one DB row for this (tenant, listing) with PENDING or ACCEPTED
     const rows = await prisma.interest.findMany({
@@ -166,21 +165,22 @@ describe('Change 5 — Listing fill race condition (conditional UPDATE)', () => 
     const owner = await createTestOwner('c5-fill');
     const listing = await createTestListing(owner.id);
 
-    const [r1, r2] = await Promise.allSettled([
-      fillListing(listing.id, owner.id),
-      fillListing(listing.id, owner.id),
-    ]);
+    const results = await Promise.allSettled(
+      Array.from({ length: 20 }, () => fillListing(listing.id, owner.id))
+    );
 
-    const successes = [r1, r2].filter((r) => r.status === 'fulfilled');
-    const failures = [r1, r2].filter((r) => r.status === 'rejected');
+    const successes = results.filter((r) => r.status === 'fulfilled');
+    const failures = results.filter((r) => r.status === 'rejected');
 
     // Exactly one succeeds
     expect(successes).toHaveLength(1);
-    expect(failures).toHaveLength(1);
+    expect(failures).toHaveLength(19);
 
     // The failure must be 409 (not 500)
-    const err = (failures[0] as PromiseRejectedResult).reason as { statusCode?: number; message?: string };
-    expect(err.statusCode).toBe(409);
+    for (const failure of failures) {
+      const err = (failure as PromiseRejectedResult).reason as { statusCode?: number; message?: string };
+      expect(err.statusCode).toBe(409);
+    }
 
     // Listing should now be FILLED
     const final = await prisma.listing.findUniqueOrThrow({ where: { id: listing.id } });

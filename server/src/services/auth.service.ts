@@ -37,7 +37,7 @@ export async function registerUser(input: {
   };
 
   const accessToken = signAccessToken(authPayload);
-  const refreshToken = signRefreshToken({ userId: user.id, family });
+  const refreshToken = signRefreshToken({ userId: user.id, family, tokenId: crypto.randomUUID() });
 
   // Store refresh token hash
   const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
@@ -94,7 +94,7 @@ export async function loginUser(input: {
   };
 
   const accessToken = signAccessToken(authPayload);
-  const refreshToken = signRefreshToken({ userId: user.id, family });
+  const refreshToken = signRefreshToken({ userId: user.id, family, tokenId: crypto.randomUUID() });
 
   const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
   await prisma.refreshToken.create({
@@ -137,64 +137,77 @@ export async function refreshTokens(oldRefreshToken: string): Promise<{
   }
 
   const tokenHash = crypto.createHash('sha256').update(oldRefreshToken).digest('hex');
-  const storedToken = await prisma.refreshToken.findFirst({
-    where: { tokenHash },
-  });
+  const result = await prisma.$transaction(async (tx) => {
+    const storedToken = await tx.refreshToken.findFirst({ where: { tokenHash } });
 
-  if (!storedToken) {
-    // Token not found — possibly reuse attack. Revoke entire family.
-    await prisma.refreshToken.updateMany({
-      where: { family: decoded.family },
+    if (!storedToken || storedToken.revokedAt) {
+      // Commit the family revocation before reporting reuse. Throwing inside this
+      // transaction would roll the security update back.
+      await tx.refreshToken.updateMany({
+        where: { family: storedToken?.family ?? decoded.family },
+        data: { revokedAt: new Date() },
+      });
+      return { error: 'reuse' as const };
+    }
+
+    if (storedToken.expiresAt < new Date()) {
+      return { error: 'expired' as const };
+    }
+
+    // Atomic compare-and-set: only one concurrent request can rotate this token.
+    const transition = await tx.refreshToken.updateMany({
+      where: { id: storedToken.id, revokedAt: null, expiresAt: { gt: new Date() } },
       data: { revokedAt: new Date() },
     });
-    throw Object.assign(new Error('Refresh token reuse detected'), { statusCode: 401 });
-  }
 
-  if (storedToken.revokedAt) {
-    // Already revoked — reuse attack. Revoke entire family.
-    await prisma.refreshToken.updateMany({
-      where: { family: storedToken.family },
-      data: { revokedAt: new Date() },
-    });
-    throw Object.assign(new Error('Refresh token reuse detected'), { statusCode: 401 });
-  }
+    if (transition.count !== 1) {
+      await tx.refreshToken.updateMany({
+        where: { family: storedToken.family },
+        data: { revokedAt: new Date() },
+      });
+      return { error: 'reuse' as const };
+    }
 
-  if (storedToken.expiresAt < new Date()) {
-    throw Object.assign(new Error('Refresh token expired'), { statusCode: 401 });
-  }
+    const user = await tx.user.findUnique({ where: { id: decoded.userId } });
+    if (!user || !user.isActive) {
+      return { error: 'inactive' as const };
+    }
 
-  // Revoke old token
-  await prisma.refreshToken.update({
-    where: { id: storedToken.id },
-    data: { revokedAt: new Date() },
-  });
-
-  // Issue new pair
-  const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
-  if (!user || !user.isActive) {
-    throw Object.assign(new Error('User not found or deactivated'), { statusCode: 401 });
-  }
-
-  const authPayload: AuthPayload = {
-    userId: user.id,
-    email: user.email,
-    role: user.role,
-  };
-
-  const newAccessToken = signAccessToken(authPayload);
-  const newRefreshToken = signRefreshToken({ userId: user.id, family: storedToken.family });
-
-  const newTokenHash = crypto.createHash('sha256').update(newRefreshToken).digest('hex');
-  await prisma.refreshToken.create({
-    data: {
+    const authPayload: AuthPayload = {
       userId: user.id,
-      tokenHash: newTokenHash,
+      email: user.email,
+      role: user.role,
+    };
+    const accessToken = signAccessToken(authPayload);
+    const refreshToken = signRefreshToken({
+      userId: user.id,
       family: storedToken.family,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    },
+      tokenId: crypto.randomUUID(),
+    });
+    const newTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+
+    await tx.refreshToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: newTokenHash,
+        family: storedToken.family,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    return { accessToken, refreshToken };
   });
 
-  return { accessToken: newAccessToken, refreshToken: newRefreshToken };
+  if ('error' in result) {
+    const message = result.error === 'expired'
+      ? 'Refresh token expired'
+      : result.error === 'inactive'
+        ? 'User not found or deactivated'
+        : 'Refresh token reuse detected';
+    throw Object.assign(new Error(message), { statusCode: 401 });
+  }
+
+  return result;
 }
 
 /**

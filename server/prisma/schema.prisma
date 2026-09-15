@@ -227,7 +227,7 @@ model Message {
   sender       User         @relation("sender", fields: [senderId], references: [id], onDelete: Cascade)
 
   @@unique([conversationId, clientMsgId], name: "uniq_conv_client_msg")
-  @@index([conversationId, createdAt(sort: Desc)], name: "idx_messages_history")
+  @@index([conversationId, createdAt(sort: Desc), id(sort: Desc)], name: "idx_messages_history")
   @@map("messages")
 }
 

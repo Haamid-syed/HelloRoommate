@@ -1,0 +1,74 @@
+{
+  "label": "LOCAL BENCHMARK — MacBook Air M1, not a production SLA",
+  "date": "2026-09-15",
+  "environment": {
+    "machine": "MacBook Air Apple M1, 8 GB RAM",
+    "os": "macOS 15.6.1 arm64",
+    "node": "v22.23.1",
+    "dockerCpus": 8,
+    "dockerMemoryGiB": 3.828,
+    "postgres": "16-alpine",
+    "redis": "7-alpine",
+    "mailpit": "1.31.1"
+  },
+  "method": {
+    "dataset": { "listings": 10000, "compatibilityScores": 10000, "messages": 100000 },
+    "concurrency": 25,
+    "warmupSeconds": 3,
+    "measuredSecondsPerRun": 10,
+    "runs": 3
+  },
+  "httpMedianAcrossRuns": {
+    "listingScoreSearch": {
+      "throughputRps": 639.02,
+      "p50Ms": 37.67,
+      "p95Ms": 54.41,
+      "p99Ms": 70.71,
+      "avgCpuPercent": 368.2,
+      "avgRssMb": 234.17
+    },
+    "messageFirstPage": {
+      "throughputRps": 1483.75,
+      "p50Ms": 15.79,
+      "p95Ms": 24.09,
+      "p99Ms": 38.92,
+      "avgCpuPercent": 232.18,
+      "avgRssMb": 211.63
+    },
+    "messageCursorAt50000": {
+      "throughputRps": 427.27,
+      "p50Ms": 55.8,
+      "p95Ms": 86.65,
+      "p99Ms": 109.57,
+      "avgCpuPercent": 166.82,
+      "avgRssMb": 213.06
+    }
+  },
+  "measuredHttpRequests": 75226,
+  "httpErrors": 0,
+  "databaseMedianMs": {
+    "listingScoreQuery": 25.965,
+    "messageFirstPage": 0.038,
+    "messageDeepKeyset": 0.038,
+    "messageDeepOffset": 7.282
+  },
+  "keysetVsOffset": {
+    "executionTimeReductionPercent": 99.48,
+    "sharedBufferHits": { "keyset": 10, "offset": 2118 }
+  },
+  "correctness": {
+    "testFilesPassed": 4,
+    "testsPassed": 18,
+    "concurrentInterestRequests": 25,
+    "concurrentFillRequests": 20,
+    "concurrentDuplicateMessages": 50,
+    "duplicateMessageRows": 0,
+    "refreshReplayFamilyRevoked": true,
+    "scoreAndCursorCorrectnessErrors": 0
+  },
+  "outbox": {
+    "restartScenario": { "queued": 60, "sent": 60, "missing": 0, "duplicates": 0 },
+    "providerOutageScenario": { "queued": 20, "pendingDuringOutage": 20, "sentAfterRecovery": 20, "missing": 0, "duplicates": 0 },
+    "semantics": "at-least-once; a crash after SMTP acceptance but before status commit can still duplicate delivery"
+  }
+}

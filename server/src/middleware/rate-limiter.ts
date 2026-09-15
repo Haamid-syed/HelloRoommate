@@ -1,6 +1,8 @@
 import type { Request, Response, NextFunction } from 'express';
+import crypto from 'crypto';
 import { redis } from '../lib/redis.js';
 import { logger } from '../lib/logger.js';
+import { env } from '../config/env.js';
 
 interface RateLimitOptions {
   windowMs: number;
@@ -22,36 +24,21 @@ export function rateLimiter({ windowMs, max, routeGroup }: RateLimitOptions) {
     }
 
     try {
-      const multi = redis.multi();
-      // Remove logs older than the current window duration
-      multi.zremrangebyscore(key, 0, windowStart);
-      // Log this request timestamp
-      multi.zadd(key, now, String(now));
-      // Retrieve count of logs remaining in this window
-      multi.zcard(key);
-      // Set key TTL so Redis auto-reclaims space
-      multi.expire(key, Math.ceil(windowMs / 1000));
-
-      const results = await multi.exec();
-      if (!results) {
-        next();
-        return;
-      }
-
-      // In ioredis, multi.exec() returns [err, result][]
-      // The result of zcard is at index 2 (third command in transaction)
-      const zcardResultTuple = results[2];
-      if (!zcardResultTuple) {
-        next();
-        return;
-      }
-      
-      const [err, requestCount] = zcardResultTuple;
-      if (err) {
-        throw err;
-      }
-
-      const count = requestCount as number;
+      // One Lua invocation makes cleanup/add/count/expiry atomic. A UUID member avoids
+      // same-millisecond collisions that previously undercounted concurrent requests.
+      const count = Number(await redis.eval(
+        `redis.call('ZREMRANGEBYSCORE', KEYS[1], 0, ARGV[1])
+         redis.call('ZADD', KEYS[1], ARGV[2], ARGV[3])
+         local count = redis.call('ZCARD', KEYS[1])
+         redis.call('PEXPIRE', KEYS[1], ARGV[4])
+         return count`,
+        1,
+        key,
+        windowStart,
+        now,
+        `${now}:${crypto.randomUUID()}`,
+        windowMs
+      ));
 
       res.setHeader('X-RateLimit-Limit', max);
       res.setHeader('X-RateLimit-Remaining', Math.max(0, max - count));
@@ -81,12 +68,12 @@ export function rateLimiter({ windowMs, max, routeGroup }: RateLimitOptions) {
 // Limiters must be instantiated once and reused
 export const authLimiter = rateLimiter({
   windowMs: 60 * 1000, // 1 minute
-  max: 30,             // 30 auth attempts/min (was 5 — too strict for dev)
+  max: env.AUTH_RATE_LIMIT_MAX,
   routeGroup: 'auth',
 });
 
 export const apiLimiter = rateLimiter({
   windowMs: 60 * 1000, // 1 minute
-  max: 300,            // 300 req/min (was 100)
+  max: env.API_RATE_LIMIT_MAX,
   routeGroup: 'api',
 });

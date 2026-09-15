@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { env } from '../config/env.js';
 import { prisma } from '../lib/prisma.js';
 import { logger } from '../lib/logger.js';
 import { sendEmail } from '../services/email.service.js';
@@ -18,8 +19,14 @@ type EmailTemplate = {
 };
 
 let intervalId: NodeJS.Timeout | null = null;
-const POLL_INTERVAL_MS = 10_000;
 const MAX_ATTEMPTS = 5;
+
+export type OutboxBatchResult = {
+  claimed: number;
+  sent: number;
+  deferred: number;
+  failedAttempts: number;
+};
 
 function payloadValue(payload: Prisma.JsonValue, key: string): string {
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return '';
@@ -84,24 +91,35 @@ function generateEmailTemplate(type: string, name: string, payload: Prisma.JsonV
   };
 }
 
-async function processOutboxQueue(): Promise<void> {
+export async function processOutboxBatch(): Promise<OutboxBatchResult> {
+  const emptyResult: OutboxBatchResult = { claimed: 0, sent: 0, deferred: 0, failedAttempts: 0 };
   try {
-    await prisma.$transaction(async (tx) => {
+    return await prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRawUnsafe<OutboxRow[]>(`
         SELECT id, user_id, type, payload, attempts, created_at
         FROM notifications_outbox
         WHERE status = 'PENDING' AND attempts < ${MAX_ATTEMPTS}
-        LIMIT 10
+        ORDER BY created_at ASC
+        LIMIT ${env.OUTBOX_BATCH_SIZE}
         FOR UPDATE SKIP LOCKED
       `);
 
       const now = Date.now();
+      const result: OutboxBatchResult = {
+        claimed: rows.length,
+        sent: 0,
+        deferred: 0,
+        failedAttempts: 0,
+      };
 
       for (const row of rows) {
         if (row.attempts > 0) {
-          const delayMs = 60_000 * 2 ** (row.attempts - 1);
+          const delayMs = env.OUTBOX_RETRY_BASE_MS * 2 ** (row.attempts - 1);
           const ageMs = now - new Date(row.created_at).getTime();
-          if (ageMs < delayMs) continue;
+          if (ageMs < delayMs) {
+            result.deferred++;
+            continue;
+          }
         }
 
         const recipient = await tx.user.findUnique({
@@ -117,6 +135,7 @@ async function processOutboxQueue(): Promise<void> {
               lastError: 'Recipient user record not found',
             },
           });
+          result.failedAttempts++;
           continue;
         }
 
@@ -128,6 +147,7 @@ async function processOutboxQueue(): Promise<void> {
             where: { id: row.id },
             data: { status: 'SENT', sentAt: new Date() },
           });
+          result.sent++;
         } catch (error) {
           const nextAttempts = row.attempts + 1;
           const message = error instanceof Error ? error.message : 'Error occurred during email transfer';
@@ -145,21 +165,25 @@ async function processOutboxQueue(): Promise<void> {
             { notificationId: row.id, attempts: nextAttempts, error: message },
             'Failed to dispatch outbox email — scheduled for backoff retry'
           );
+          result.failedAttempts++;
         }
       }
+
+      return result;
     });
   } catch (error) {
     logger.error({ error }, 'Error occurred inside email outbox processing loop');
+    return emptyResult;
   }
 }
 
 export function startEmailWorker(): { close: () => Promise<void> } {
   if (intervalId) return { close: async () => {} };
 
-  void processOutboxQueue();
+  void processOutboxBatch();
   intervalId = setInterval(() => {
-    void processOutboxQueue();
-  }, POLL_INTERVAL_MS);
+    void processOutboxBatch();
+  }, env.OUTBOX_POLL_INTERVAL_MS);
 
   logger.info('📧 Email Outbox Worker started');
 

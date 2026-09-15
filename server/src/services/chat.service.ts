@@ -1,5 +1,43 @@
 import type { PaginationInput } from 'shared';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
+
+/** Persist a client message idempotently under the database uniqueness constraint. */
+export async function persistMessage(input: {
+  conversationId: string;
+  senderId: string;
+  body: string;
+  clientMsgId: string;
+}) {
+  try {
+    return await prisma.message.upsert({
+      where: {
+        uniq_conv_client_msg: {
+          conversationId: input.conversationId,
+          clientMsgId: input.clientMsgId,
+        },
+      },
+      create: input,
+      update: {},
+    });
+  } catch (error) {
+    // Under high concurrency PostgreSQL can reject one of Prisma's concurrent
+    // upsert INSERT paths with P2002. The unique constraint has done its job;
+    // return the committed winner so every retry receives the same server id.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      const winner = await prisma.message.findUnique({
+        where: {
+          uniq_conv_client_msg: {
+            conversationId: input.conversationId,
+            clientMsgId: input.clientMsgId,
+          },
+        },
+      });
+      if (winner) return winner;
+    }
+    throw error;
+  }
+}
 
 /** Check whether a user is the tenant or listing owner associated with a conversation. */
 export async function checkConversationMembership(conversationId: string, userId: string): Promise<boolean> {
@@ -106,11 +144,31 @@ export async function getConversationMessages(
   }
 
   const limit = params.limit ?? 20;
+  let cursorBoundary: { id: string; createdAt: Date } | null = null;
+  if (params.cursor) {
+    cursorBoundary = await prisma.message.findFirst({
+      where: { id: params.cursor, conversationId },
+      select: { id: true, createdAt: true },
+    });
+    if (!cursorBoundary) {
+      throw Object.assign(new Error('Message cursor not found in this conversation'), { statusCode: 400 });
+    }
+  }
+
   const messages = await prisma.message.findMany({
-    where: { conversationId },
-    orderBy: { createdAt: 'desc' },
+    where: {
+      conversationId,
+      ...(cursorBoundary
+        ? {
+            OR: [
+              { createdAt: { lt: cursorBoundary.createdAt } },
+              { createdAt: cursorBoundary.createdAt, id: { lt: cursorBoundary.id } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: limit + 1,
-    ...(params.cursor ? { cursor: { id: params.cursor }, skip: 1 } : {}),
   });
 
   const hasMore = messages.length > limit;
